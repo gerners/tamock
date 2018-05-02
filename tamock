@@ -1,0 +1,603 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use Getopt::Long;
+use File::Basename;
+use File::Copy;
+use File::Spec;
+use File::Fetch;
+use File::Path qw(make_path remove_tree);
+use Fcntl qw(:DEFAULT :flock);
+use Archive::Tar;
+use IPC::Cmd qw(can_run run run_forked);
+use IO::Compress::Gzip qw(gzip $GzipError) ;
+use IO::Uncompress::Gunzip qw(gunzip $GunzipError) ;
+use Time::HiRes qw(gettimeofday tv_interval);
+
+#absolute path of install dir
+my $wd = File::Spec->rel2abs(readlink($0));
+if (! -d $wd) {
+	$wd = dirname($wd);
+}
+
+my $t0 = [gettimeofday];
+
+#default NCBI assembly summary table
+my $ncbi_as_uri = "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt";
+
+#config		refseq dir
+my ($readsf,$readsr,$readsu,$cent_krep,$cent_tab) = (undef,undef,undef,undef,undef);
+my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,
+	$debug,$verbose,$outdir,$install_deps,$download_index);
+
+#defaults
+my $threads = 1;
+my $abs_species_threshold = 1;
+my $mfl = 200;
+my $sfl = 10;
+my $length = 125;
+my $illumina_model = "HS25";
+
+GetOptions(	"outdir=s" => \$outdir,
+			
+			"forward|1=s" => \$readsf,
+			"reverse|2=s" => \$readsr,
+			"unpaired|U=s" => \$readsu,
+			"index|x=s" => \$index,
+			"threads:i" => \$threads,
+			
+			"refgenomes|R=s" => \$refseq_folder,
+			"assembly-summary=s" => \$assembly_summary,
+			"min-abund-species:i" => \$abs_species_threshold,
+			"no-reassign" => \$no_strain_ra,
+			"centrifuge-kreport" => \$cent_krep,
+			"centrifuge-out-tab" => \$cent_tab,
+			
+			"illumina-model|M=s" => \$illumina_model,
+			"mean-fragment-length=i" => \$mfl,
+			"sd-fragment-length=i" => \$sfl,
+			"length:i" => \$length,
+			"gzip" => \$modegz,
+			
+			"install-deps" => \$install_deps,
+			"ncbi-sum-update" => \$update_as,
+			"debug+" => \$debug,
+			"verbose" => \$verbose,
+			
+			"help" => \&print_help);
+
+##########################################################################
+#test dependencies/input
+
+
+if ($install_deps) {
+	install_dependencies();
+}
+
+if (-d $outdir) {
+	warn "WARNING: Directory already exists, results might be overwritten\n";
+	#give 5 secs to kill command if wrong dir is provided
+	sleep 5;
+} else {
+	die "No output directory given\n" unless $outdir;
+	mkd("$outdir");
+}
+
+#Check available dependencies before help function to provide proper path in help
+my ($centrifuge_path,$kreport_path,$art_path);
+if ( -x "${wd}/centrifuge/bin/centrifuge" && -x "${wd}/centrifuge/bin/centrifuge-kreport" ) {
+	$centrifuge_path = "${wd}/centrifuge/bin/centrifuge";
+	$kreport_path = "${wd}/centrifuge/bin/centrifuge-kreport";
+} else {
+	$centrifuge_path = can_run('centrifuge') 
+		or die "'centrifuge' is not installed, please run $0 --install-deps\n";
+	$kreport_path = can_run('centrifuge-kreport') 
+		or die "'centrifuge-kreport' is not installed, please run $0 --install-deps\n";
+		p_lock(1,1,"$outdir/warnings.log",
+		"WARNING: Using centrifuge found at '$centrifuge_path', version might be incompatible, consider running $0 --install-deps");
+}
+if ( -x "${wd}/art/bin/art_illumina") {
+	$art_path = "${wd}/bin/art_illumina";
+} else {
+	$art_path = can_run('art_illumina') 
+		or die "'art_illumina' is not installed, please run $0 --install-deps\n";
+		p_lock(1,1,"$outdir/warnings.log",
+		"WARNING: Using art_illumina found at '$art_path', version might be incompatible, consider running $0 --install-deps");	
+}
+
+#check assembly_summary table or download
+if (! $assembly_summary) {
+	if (-r "${wd}/assembly_summary.txt" && ! $update_as) {
+		$assembly_summary = "${wd}/assembly_summary.txt";
+	} else {
+		if ($update_as) {
+			#update assembly file in install dir
+			$assembly_summary = fetchfile("$ncbi_as_uri","$wd");
+			exit;
+		} else {
+			p_lock(0,1,"$outdir/tamock.log",
+				"Downloading '$ncbi_as_uri' to current directory ...\n");
+			$assembly_summary = fetchfile("$ncbi_as_uri");
+		}
+	}
+} else {
+	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
+}
+
+my $semode;
+#centrifuge
+{
+	#either paired or unpaired reads can be unitialized
+	no warnings 'uninitialized';
+	if (! (( -r $readsf && -r $readsr) || -r $readsu) ) {
+		die "ERROR: No sequence files provided\n";
+	}
+	#flag SE mode, default expecting PE mode
+	$semode++ unless (-r $readsf && -r $readsr);
+}
+
+if (! $index) {
+	if (-r "${wd}/centrifuge-index/p+h+v.1.cf") {
+		$index = "${wd}/centrifuge-index/p+h+v";
+		p_lock(0,$verbose,"$outdir/tamock.log",
+				"INFO: Using default index 'p+h+v' for classification\n");
+	} else {
+		die "No index provided or found, please provide centrifuge-index\n";
+	}
+}
+
+##########################################################################
+#run centrifuge
+if (! (defined $cent_krep && defined $cent_tab)) {
+	my $cent_cmd = "$centrifuge_path --out-fmt tab -x $index -p $threads";
+	if ($readsf && $readsr) {
+		$cent_cmd = "$cent_cmd -1 $readsf -2 $readsr";
+	}
+	if ($readsu) {
+		$cent_cmd = "$cent_cmd -U $readsu";
+	}
+	$cent_cmd = "$cent_cmd -S $outdir/classification_out/centrifuge.out --report-file $outdir/classification_out/centrifuge.report";
+	
+	p_lock(0,1,"$outdir/tamock.log",
+		"#################################################\nClassifying sequences...");
+		
+	mkd("$outdir/classification_out");
+	runcmd("$cent_cmd",$verbose);
+	runcmd("$kreport_path -x $index $outdir/classification_out/centrifuge.out > $outdir/classification_out/centrifuge.kreport",$verbose);
+}
+
+##########################################################################
+#run create mocks
+
+p_lock(0,1,"$outdir/tamock.log",
+	"#################################################\nCreating mock sequences...");
+
+my $profile_cmd = "${wd}/scripts/mock_profile_kreport.pl -a $assembly_summary";
+if ($cent_krep) {
+	$profile_cmd .= " -k $cent_krep";
+} else {
+	$profile_cmd .= " -k $outdir/classification_out/centrifuge.kreport";
+}
+
+$profile_cmd = "$profile_cmd -r $refseq_folder -o $outdir/classification_out/ -m $abs_species_threshold -v";
+$profile_cmd .= " --no-reassign" if $no_strain_ra;
+
+runcmd("$profile_cmd",$verbose);
+
+########################
+my $mock_cmd = "${wd}/scripts/create_mocks_art.pl -p $outdir/classification_out/fullprofile.tsv -M $illumina_model -l $length";
+$mock_cmd .= " --mean-fragment-length $mfl --sd-fragment-length $sfl -o $outdir/tmpreads -R $refseq_folder ";
+$mock_cmd .= " --gzip" if $modegz;
+$mock_cmd .= " --single-end" if $semode;
+runcmd("$mock_cmd",$verbose);
+
+########################
+my $extractbac_cmd = "${wd}/scripts/extract_bacreads_kreport.pl";
+if ($cent_tab) {
+	$extractbac_cmd .= " -c $cent_tab";
+} else {
+	$extractbac_cmd .= " -c $outdir/classification_out/centrifuge.out";
+}
+$extractbac_cmd .= " --gzip" if $modegz;
+$extractbac_cmd .= " -x $index -o $outdir/tmpreads";
+$extractbac_cmd .= " $readsf $readsr" if ($readsf && $readsr);
+$extractbac_cmd .= " $readsu" if ($readsu);
+
+runcmd("$extractbac_cmd",$verbose);
+
+########################
+#cat result files
+
+#single end mode, only se file expected
+if ($semode) {
+	my $read_b = basename($readsu);
+	my ($read_nbac,$read_fn,$read_sf);
+	if ($read_b =~ /(\w+\.)(.+)/) {
+		$read_nbac = "$outdir/tmpreads/${1}nobac.${2}";
+		$read_fn = $1;
+		$read_sf = $2;
+	} else {
+		die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
+	}
+	#FNB = no bacterial reads, FM = mock reads, FWGZ = merged outputfile
+	$read_nbac = gz_path_check("$read_nbac",$modegz);
+	my $FNB = r_file("$read_nbac");
+	
+	my $mockonly = gz_path_check("$outdir/tmpreads/mocked_bac.fq",$modegz);
+	my $FM = r_file("$mockonly");
+	
+	my $mockfull = gz_path_check("$outdir/mock_${read_fn}${read_sf}",$modegz);
+	my $FWGZ = w_file("$mockfull");
+	
+	foreach my $FH ($FNB,$FM) {
+		while (my $line = <$FH>) {
+			print $FWGZ $line;
+		}
+	}
+	close $FNB;
+	close $FM;
+	close $FWGZ; 
+} else {
+	for my $file ($readsf,$readsr) {
+		my $read_b = basename($file);
+		my ($read_nbac,$read_fn,$read_sf);
+		if ($read_b =~ /(\w+\.)(.+)/) {
+			$read_nbac = "$outdir/tmpreads/${1}nobac.${2}";
+			$read_fn = $1;
+			$read_sf = $2;
+		} else {
+			die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
+		}
+		
+		$read_nbac = gz_path_check("$read_nbac",$modegz);
+		my $FNB = r_file("$read_nbac");
+		
+		my $FM;
+		if ($file eq $readsf) {
+			my $mockonly1 = gz_path_check("$outdir/tmpreads/mocked_bac_1.fq",$modegz);
+			$FM = r_file("$mockonly1");
+		} else {
+			my $mockonly2 = gz_path_check("$outdir/tmpreads/mocked_bac_2.fq",$modegz);
+			$FM = r_file("$mockonly2");
+		}
+		
+		my $mockfull = gz_path_check("$outdir/mock_${read_fn}${read_sf}",$modegz);
+		my $FWGZ = w_file("$mockfull");
+		
+		foreach my $FH ($FNB,$FM) {
+			while (my $line = <$FH>) {
+				print $FWGZ $line;
+			}
+		}
+		close $FNB;
+		close $FM;
+		close $FWGZ;
+	}
+	#in paired end mode, only paired reads are mocked, copy non-bac single end file if present
+	if (defined $readsu) {
+		my $read_b = basename($readsu);
+		my ($read_nbac,$read_fn,$read_sf);
+		if ($read_b =~ /(\w+\.)(.+)/) {
+			$read_nbac = "$outdir/tmpreads/${1}nobac.${2}";
+			$read_fn = $1;
+			chop $read_fn;
+			$read_sf = $2;
+		} else {
+			die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
+		}
+		my $file_from = gz_path_check("$outdir/tmpreads/${1}nobac.${2}",$modegz);
+		my $file_to = gz_path_check("$outdir/mock_${read_fn}_se.${read_sf}",$modegz);
+		copy("$file_from","$file_to") or die "Copy '$file_from' to '$file_to' failed: $!";
+	}
+}
+
+my $msg = "Finished tamock with runtime " . runtime(tv_interval($t0)) ;
+p_lock(0,1,"$outdir/tamock.log", "$msg");
+
+##########################################################################
+sub install_dependencies
+{
+	my $unzip_path = can_run('unzip')
+		or die "'unzip' not found, installation failed\n";
+	my $zipinfo_path = can_run('zipinfo')
+		or die "'zipinfo' not found, installation failed\n";
+	my $make_path = can_run('make')
+		or die "'make' not found, installation failed\n";
+	
+	#check if libGSL is installed
+	can_run('gsl-config') or die "libgsl not installed (can't locate gsl-config)\n",
+	"Please see 'https://www.gnu.org/software/gsl/' or use your local package manager for installation\n";
+	
+	#CENTRIFUGE
+	print "Downloading Centrifuge...\n";
+	
+	#caveat, fetch fails with no error if https is used, just retype to http
+	my $cf_arch = fetchfile('http://github.com/infphilo/centrifuge/archive/43d58d4cace4e9e32f832fb308279a4e7abc8536.zip',"$wd");
+	runcmd("$unzip_path $cf_arch",0);
+	
+	print "Building Centrifuge...\n";
+	#TODO find better generic solution to get directory name in archive
+	my $cf_build = qx{$zipinfo_path -1 $cf_arch | head -n 1};
+	chomp $cf_build;
+	
+	chdir $cf_build or die "Can't change to directory to '$cf_build': $!\n";
+	runcmd("make",1);
+	runcmd("make install prefix=${wd}/centrifuge",1);
+	chdir $wd or die "Can't change to directory to '$wd': $!\n";
+	
+	rmrf($cf_arch);
+	rmrf($cf_build);
+	
+	#ART
+	print "Downloading ART...\n";
+	#caveat, fetch fails with no error if https is used, just retype to http
+	my $art_arch = fetchfile('http://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier20160605linuxtgz.tgz',"$wd");
+	
+	my $art_tar = Archive::Tar->new;
+	$art_tar->read("$art_arch");
+	my $art_build = "${wd}/" . ($art_tar->list_files(['name']))[0];
+	$art_tar->extract();
+	
+	print "Building ART...\n";
+	chdir $art_build or die "Can't change to directory to '$art_build': $!\n";
+	runcmd("./configure --prefix=${wd}/art",1);
+	runcmd("make",1);
+	runcmd("make install",1);
+	chdir $wd or die "Can't change to directory to '$wd': $!\n";
+	
+	rmrf("$art_arch");
+	rmrf("$art_build");
+	
+	#get assembly summary file
+	my $as_file = fetchfile("$ncbi_as_uri","$wd");
+	
+	print "Finished installing dependencies\n";
+	
+	exit;
+}
+##########################################################################
+sub fetchfile
+{
+	my ($uri,$targetdir) = @_;
+	if (! $targetdir) {
+		$targetdir = ".";
+	}
+	my $ff = File::Fetch->new(uri => "$uri");
+	my $file = $ff->fetch( to => "$targetdir") or die $ff->error();
+	return $file;
+}
+##########################################################################
+sub runcmd
+{
+	my ($cmd,$verbose) = @_;
+	
+	if ($install_deps) {
+		$verbose = 1;
+	} else {
+		#print command to screen if non-verbous, if verbose it's already printed by run()
+		if ($verbose) {
+			p_lock(0,0,"$outdir/tamock.log","Running [${cmd}]...");
+		} else {
+			p_lock(0,1,"$outdir/tamock.log","Running [${cmd}]...");
+		}
+		p_lock(1,0,"$outdir/warnings.log","Running [${cmd}]...");
+	}	
+	
+	my( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
+            run( command => "$cmd", verbose => $verbose );
+    
+    if (! $install_deps) {
+    	p_lock(0,0,"$outdir/tamock.log","@$stdout_buf");
+		p_lock(1,0,"$outdir/warnings.log","@$stderr_buf");
+    }
+    
+	if (! $success ) {
+		die "'$cmd' failed: $error_message\n";
+	}
+}
+##########################################################################
+sub runtime
+{
+	#get runtime in seconds from e.g. "(time - $^T)"
+	my $time = shift @_;
+	my $rtime;
+	#check if script ran for more than one minute
+	if ($time > 59 ) {
+		#or more than one hour
+		if ($time > 3599 ) {
+			#or more than one day
+			if ($time > 86399) {
+				$rtime = int($time / 86400) . "d " . int(($time % 86400) / 3600) . "h " . int((($time % 86400) % 3600) / 60) . "m " . (((time % 86400) % 3600) % 60) . "s";
+				return $rtime;
+			}
+			$rtime = int($time / 3600) . "h " . int(($time % 3600) / 60) . "m " . (($time % 3600) % 60) . "s";
+			return $rtime;	
+		}
+		$rtime = int($time / 60) . "m " . ($time % 60) . "s";
+		return $rtime;
+	}
+	$rtime = $time . "s";
+	return $rtime;
+}
+##########################################################################
+sub rmrf
+{
+	my ($goner,$verbose) = @_;
+	if (-d $goner) {
+		my ($err);
+		remove_tree("$goner", {verbose => $verbose, error => \$err});
+		if (@$err) {
+			for my $diag (@$err) {
+				my ($file, $message) = %$diag;
+				if ($file eq '') {
+					print "Error: $message\n";
+				} else {
+					print "Problem unlinking $file: $message\n";
+				}
+			}
+		}
+	} else {
+		unlink $goner or warn "Could not unlink $goner: $!";
+	}
+}
+##########################################################################
+sub mkd
+{
+	my ($dir,$verbose) = @_,
+	my $err;
+	make_path("$dir",{verbose => $verbose, error => \$err});
+	if (@$err) {
+		for my $diag (@$err) {
+			my ($file, $message) = %$diag;
+			if ($file eq '') {
+				print "General error: $message\n";
+			} else {
+				print "Problem creating $file: $message\n";
+			}
+		}
+	}
+}
+##########################################################################
+sub r_file
+{
+	my $filepath = shift;
+	my $FH;
+	if ($filepath =~ /\.gz$/i) {
+	 	$FH = IO::Uncompress::Gunzip->new("$filepath") or die "ERROR: couldn't open file '$filepath' : $GunzipError\n";
+	} else {
+		open $FH, "$filepath" or die "ERROR: couldn't open file '$filepath' : $!";
+	}
+	return $FH;
+}
+##########################################################################
+sub w_file
+{
+	my $filepath = shift;
+	my $FH;
+	
+	if ($filepath =~ /\.gz$/i) {
+	 	$FH = IO::Compress::Gzip->new("$filepath") or die "ERROR: couldn't write to file '$filepath' : $GzipError\n";
+	} else {
+		open $FH, ">$filepath" or die "ERROR: couldn't write to file '$filepath' : $!";
+	}
+	return $FH;
+}
+##########################################################################
+sub a_file
+{
+	my $filepath = shift;
+	my $FH;
+	
+	if ($filepath =~ /\.gz$/i) {
+	 	$FH = IO::Compress::Gzip->new("$filepath", Append => 1) or die "ERROR: couldn't append to file '$filepath' : $GzipError\n";
+	} else {
+		open $FH, ">>$filepath" or die "ERROR: couldn't append to file '$filepath' : $!";
+	}
+	return $FH;
+}
+##########################################################################
+sub p_lock
+{
+	my ($warn,$verbose,$log,$msg) = @_;
+	my $FH = a_file("$log");
+	flock $FH, LOCK_EX or die  "$0 [$$]: flock: $!";
+	
+	if (ref($msg) eq 'ARRAY') {
+		$msg = join("",@$msg);
+	}
+	
+	if ($verbose) {
+		if ($warn) {
+			warn "$msg\n";
+		} else {
+			print "$msg\n";
+		}
+		print $FH "$msg\n";
+	} else {
+		print $FH "$msg\n";
+	}
+	close $FH;
+}
+##########################################################################
+sub gz_path_check
+{
+	my ($path,$gz) = @_;
+	my $fpath;
+	if ($gz && $path !~ /\.gz$/ ) {
+		$fpath = "${path}.gz";
+	} elsif ($gz && $path =~ /\.gz$/) {
+		$fpath = $path;
+	} elsif (! $gz && $path !~ /\.gz$/ ) {
+		$fpath = $path;
+	} elsif (! $gz && $path =~ /\.gz$/) {
+		$fpath = substr($path,0,-3);
+	} else {
+		die "Unexpected filename of inputfile '$fpath', expected <name.suffix(es)>\n";
+	}
+	return $fpath;
+}
+##########################################################################
+sub print_help
+{
+	print STDERR <<EOD;
+
+Usage: $0 [Parameters]
+	
+	tamock: Create targeted mock community for metagenomic sample
+	Default values in brackets
+	
+	==== Mandatory ====
+	
+	-1/--forward			Forward paired reads, optionally together with -U
+	-2/--reverse			Reverse paired reads, optionally together with -U 
+	-U/--unpaired			Unpaired/single end reads, mandatory if no paired reads
+	
+	-o/--outdir      		Output directory
+	-R/--refgenomes			Directory to safe reference genomes in gzipped fasta format
+	
+	
+	
+	==== Optional ====
+	
+	--gzip    	        	Gzip all output sequence files (off)
+	
+	-x/--index   			Centrifuge index ($wd/centrifuge-index/p+h+v)
+	-a/--assembly-summary		NCBI Assembly summary table to select reference genomes 
+	                   			($wd/assembly_summary.txt)
+	--ncbi-sum-update		Download current NCBI Assembly summary table and exit
+		                   		(downloads current '$ncbi_as_uri')
+	-t/--threads			Number of threads for centrifuge (1)
+	-v/--verbose			Verbose mode, print detailed information to screen
+	
+	
+	== Mocks ==
+	
+	--centrifuge-kreport		Centrifuge kreport, skips centrifuge classification if provided
+	--centrifuge-out-tab		Centrifuge tabbed output (-S <cent-out>), skips centrifuge classification if provided
+	
+	--min-abund-species		Minimum number of classified reads for a species and all related strains
+	                 		to be included into the mock community (1)
+	--no-reassign			No reassignment of read counts from strains without a reference to other 
+	               				classified strains/reference genomes of same species (off)
+	
+	== ART sequence simulator ==
+	
+	-M/--illumina-model		Illumima error model for ART (HS25)
+	                        		For available profiles run 'art_illumina -h'
+	-l/--length	    		Read length of simulated reads (125)
+	--mean-fragement-length		Mean size of fragments for paired-end simulations (200)
+	--sd-fragment-length		Standard deviation of fragment size for paired-end simulations (10)
+	
+	
+	== Dependencies ==
+	
+	--install-deps			Install centrifuge and ART default versions (depends on libgsl)
+	
+	
+	
+	-h/--help			Prints this helpmessage
+	
+EOD
+	exit;
+}
