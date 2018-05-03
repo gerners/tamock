@@ -31,6 +31,7 @@ Prebuild indexes are provided on the centrifuge homepage at http://www.ccb.jhu.e
 
 Example:
 
+	#Optional: If downloaded as following
 	mkdir /<tamock_install_dir>/centrifuge-index
 	cd /<tamock_install_dir>/centrifuge-index
 	wget ftp://ftp.ccb.jhu.edu/pub/infphilo/centrifuge/data/p+h+v.tar.gz
@@ -39,6 +40,11 @@ Example:
 If a centrifuge p+h+v index is placed at the install directory under
 <install_dir/centrifuge-index/p+h+v*>
 this index is used by default if no other index is provided to tamock.
+
+RefSeq reference genomes are all saved within one directory. If the directory /<tamock_install_dir>/refseq-genomes is created, this directory is used by default unless another directory is provided via the command line.
+
+	#optional
+	mkdir /<tamock_install_dir>/refseq-genomes
 
 ### Install
 

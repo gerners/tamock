@@ -125,8 +125,8 @@ if (! $assembly_summary) {
 	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
 }
 
+
 my $semode;
-#centrifuge
 {
 	#either paired or unpaired reads can be unitialized
 	no warnings 'uninitialized';
@@ -137,6 +137,7 @@ my $semode;
 	$semode++ unless (-r $readsf && -r $readsr);
 }
 
+#centrifuge index check
 if (! $index) {
 	if (-r "${wd}/centrifuge-index/p+h+v.1.cf") {
 		$index = "${wd}/centrifuge-index/p+h+v";
@@ -145,6 +146,18 @@ if (! $index) {
 	} else {
 		die "No index provided or found, please provide centrifuge-index\n";
 	}
+}
+
+#reference genome folder check
+if (! $refseq_folder) {
+	if (-d "${wd}/refseq-genomes") {
+		$refseq_folder = "${wd}/refseq-genomes";
+	}
+} else {
+	#test if writeable
+	my $touch = w_file("$refseq_folder/write_test_refseq");
+	close $touch;
+	rmrf("$refseq_folder/write_test_refseq");
 }
 
 ##########################################################################
@@ -221,23 +234,27 @@ if ($semode) {
 		die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
 	}
 	#FNB = no bacterial reads, FM = mock reads, FWGZ = merged outputfile
-	$read_nbac = gz_path_check("$read_nbac",$modegz);
-	my $FNB = r_file("$read_nbac");
-	
-	my $mockonly = gz_path_check("$outdir/tmpreads/mocked_bac.fq",$modegz);
-	my $FM = r_file("$mockonly");
 	
 	my $mockfull = gz_path_check("$outdir/mock_${read_fn}${read_sf}",$modegz);
 	my $FWGZ = w_file("$mockfull");
 	
-	foreach my $FH ($FNB,$FM) {
-		while (my $line = <$FH>) {
-			print $FWGZ $line;
-		}
+	$read_nbac = gz_path_check("$read_nbac",$modegz);
+	my $FNB = r_file("$read_nbac");
+	
+	while (my $line = <$FNB>) {
+		print $FWGZ $line;
 	}
 	close $FNB;
+	
+	my $mockonly = gz_path_check("$outdir/tmpreads/mocked_bac.fq",$modegz);
+	my $FM = r_file("$mockonly");
+	
+	while (my $line = <$FM>) {
+		print $FWGZ $line;
+	}
 	close $FM;
-	close $FWGZ; 
+	close $FWGZ;
+	 
 } else {
 	for my $file ($readsf,$readsr) {
 		my $read_b = basename($file);
@@ -250,9 +267,17 @@ if ($semode) {
 			die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
 		}
 		
+		my $mockfull = gz_path_check("$outdir/mock_${read_fn}${read_sf}",$modegz);
+		my $FWGZ = w_file("$mockfull");
+		
 		$read_nbac = gz_path_check("$read_nbac",$modegz);
 		my $FNB = r_file("$read_nbac");
 		
+		while (my $line = <$FNB>) {
+			print $FWGZ $line;
+		}
+		close $FNB;
+				
 		my $FM;
 		if ($file eq $readsf) {
 			my $mockonly1 = gz_path_check("$outdir/tmpreads/mocked_bac_1.fq",$modegz);
@@ -261,18 +286,12 @@ if ($semode) {
 			my $mockonly2 = gz_path_check("$outdir/tmpreads/mocked_bac_2.fq",$modegz);
 			$FM = r_file("$mockonly2");
 		}
-		
-		my $mockfull = gz_path_check("$outdir/mock_${read_fn}${read_sf}",$modegz);
-		my $FWGZ = w_file("$mockfull");
-		
-		foreach my $FH ($FNB,$FM) {
-			while (my $line = <$FH>) {
-				print $FWGZ $line;
-			}
-		}
-		close $FNB;
+		while (my $line = <$FM>) {
+			print $FWGZ $line;
+		}		
 		close $FM;
 		close $FWGZ;
+		
 	}
 	#in paired end mode, only paired reads are mocked, copy non-bac single end file if present
 	if (defined $readsu) {
@@ -464,7 +483,7 @@ sub r_file
 	my $filepath = shift;
 	my $FH;
 	if ($filepath =~ /\.gz$/i) {
-	 	$FH = IO::Uncompress::Gunzip->new("$filepath") or die "ERROR: couldn't open file '$filepath' : $GunzipError\n";
+	 	$FH = IO::Uncompress::Gunzip->new("$filepath", MultiStream => 1 ) or die "ERROR: couldn't open file '$filepath' : $GunzipError\n";
 	} else {
 		open $FH, "$filepath" or die "ERROR: couldn't open file '$filepath' : $!";
 	}
@@ -554,7 +573,10 @@ Usage: $0 [Parameters]
 	-U/--unpaired			Unpaired/single end reads, mandatory if no paired reads
 	
 	-o/--outdir      		Output directory
+	
 	-R/--refgenomes			Directory to safe reference genomes in gzipped fasta format
+							(if present: $wd/refseq-genomes)
+	-x/--index   			Centrifuge index (if present: $wd/centrifuge-index/p+h+v)
 	
 	
 	
@@ -562,7 +584,6 @@ Usage: $0 [Parameters]
 	
 	--gzip    	        	Gzip all output sequence files (off)
 	
-	-x/--index   			Centrifuge index ($wd/centrifuge-index/p+h+v)
 	-a/--assembly-summary		NCBI Assembly summary table to select reference genomes 
 	                   			($wd/assembly_summary.txt)
 	--ncbi-sum-update		Download current NCBI Assembly summary table and exit
