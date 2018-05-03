@@ -36,6 +36,9 @@ Example:
 	cd /<tamock_install_dir>/centrifuge-index
 	wget ftp://ftp.ccb.jhu.edu/pub/infphilo/centrifuge/data/p+h+v.tar.gz
 	tar -xzf p+h+v.tar.gz
+	
+	#if there is already a present centrifuge installation with indexes, the index folder can also be linked like
+	ln -s /path/to/centrifuge-indexes /<tamock_install_dir>/centrifuge-index
 
 If a centrifuge p+h+v index is placed at the install directory under
 <install_dir/centrifuge-index/p+h+v*>

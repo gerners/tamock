@@ -16,7 +16,13 @@ use IO::Uncompress::Gunzip qw(gunzip $GunzipError) ;
 use Time::HiRes qw(gettimeofday tv_interval);
 
 #absolute path of install dir
-my $wd = File::Spec->rel2abs(readlink($0));
+my $wd;
+if (-l $0 ) {
+	$wd = File::Spec->rel2abs(readlink($0));
+} else {
+	$wd = File::Spec->rel2abs($0);
+}
+
 if (! -d $wd) {
 	$wd = dirname($wd);
 }
