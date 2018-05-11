@@ -2,17 +2,18 @@
 
 use strict;
 use warnings;
-use Getopt::Long;
+use Archive::Tar;
 use File::Basename;
 use File::Copy;
 use File::Spec;
 use File::Fetch;
 use File::Path qw(make_path remove_tree);
 use Fcntl qw(:DEFAULT :flock);
-use Archive::Tar;
+use Getopt::Long;
 use IPC::Cmd qw(can_run run run_forked);
 use IO::Compress::Gzip qw(gzip $GzipError) ;
-use IO::Uncompress::Gunzip qw(gunzip $GunzipError) ;
+use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
+use List::Util qw(any);
 use Time::HiRes qw(gettimeofday tv_interval);
 
 #absolute path of install dir
@@ -73,15 +74,17 @@ GetOptions(	"outdir=s" => \$outdir,
 			
 			"help" => \&print_help);
 
-##########################################################################
-#test dependencies/input
-
-
 if ($install_deps) {
 	install_dependencies();
 }
 
-if (-d $outdir) {
+##########################################################################
+#sanity checks
+
+########################
+### outdir ###
+
+if (defined $outdir && -d $outdir) {
 	warn "WARNING: Directory already exists, results might be overwritten\n";
 	#give 5 secs to kill command if wrong dir is provided
 	sleep 5;
@@ -90,7 +93,9 @@ if (-d $outdir) {
 	mkd("$outdir");
 }
 
-#Check available dependencies before help function to provide proper path in help
+########################
+### dependencies ###
+
 my ($centrifuge_path,$kreport_path,$art_path);
 if ( -x "${wd}/centrifuge/bin/centrifuge" && -x "${wd}/centrifuge/bin/centrifuge-kreport" ) {
 	$centrifuge_path = "${wd}/centrifuge/bin/centrifuge";
@@ -112,8 +117,10 @@ if ( -x "${wd}/art/bin/art_illumina") {
 		"WARNING: Using art_illumina found at '$art_path', version might be incompatible, consider running $0 --install-deps");	
 }
 
-#check assembly_summary table or download
-if (! $assembly_summary) {
+########################
+### assembly summary table ###
+
+if (! defined $assembly_summary) {
 	if (-r "${wd}/assembly_summary.txt" && ! $update_as) {
 		$assembly_summary = "${wd}/assembly_summary.txt";
 	} else {
@@ -131,7 +138,8 @@ if (! $assembly_summary) {
 	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
 }
 
-
+########################
+### input sequence files ###
 my $semode;
 {
 	#either paired or unpaired reads can be unitialized
@@ -143,7 +151,10 @@ my $semode;
 	$semode++ unless (-r $readsf && -r $readsr);
 }
 
-#centrifuge index check
+########################
+### centrifuge ###
+
+#index
 if (! $index) {
 	if (-r "${wd}/centrifuge-index/p+h+v.1.cf") {
 		$index = "${wd}/centrifuge-index/p+h+v";
@@ -154,7 +165,17 @@ if (! $index) {
 	}
 }
 
-#reference genome folder check
+#centrifuge-files
+if (defined $cent_krep) {
+	die "'$cent_krep' not readable\n" unless (-r $cent_krep);
+}
+if (defined $cent_tab) {
+	die "'$cent_tab' not readable\n" unless (-r $cent_tab);
+}
+
+########################
+### refseq genome folder ###
+
 if (! $refseq_folder) {
 	if (-d "${wd}/refseq-genomes") {
 		$refseq_folder = "${wd}/refseq-genomes";
@@ -164,6 +185,22 @@ if (! $refseq_folder) {
 	my $touch = w_file("$refseq_folder/write_test_refseq");
 	close $touch;
 	rmrf("$refseq_folder/write_test_refseq");
+}
+
+########################
+### ART parameters ###
+
+#positive values for min species abundance, read length, mean fragment lenght, sd fragment length, threads
+for my $inttest ($abs_species_threshold,$length,$mfl, $sfl, $threads) {
+	if (! $inttest =~ /^[1-9]+[0-9]*$/) {
+		die "'$inttest' is not a positive integer greater than 0\n";
+	}
+}
+
+#ART models
+my @art_models = ("GA1", "GA2", "HS10", "HS20", "HS25", "HSXn", "HSXt", "MinS", "MSv1", "MSv3", "NS50");
+if (! any { $illumina_model } @art_models ) {
+	die "'$illumina_model' is not a valid model for ART. Please see documentation at https://github.com/gerners/tamock or art_illumina -h for valid options\n";
 }
 
 ##########################################################################
