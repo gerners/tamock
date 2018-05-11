@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 #create mock fastq files from the fullprofile.tsv file resulting form extract_bacterial_reads_from_kraken_report.pl
 

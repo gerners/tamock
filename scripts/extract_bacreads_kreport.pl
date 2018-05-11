@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 #Extract all reads classified as bacterial/remove all reads classified as bacterial using kraken report
 #either from Kraken or Centrifuge
