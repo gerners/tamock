@@ -134,6 +134,7 @@ foreach my $fastqfile (@ARGV) {
 		if (($. == 1) || ($.-1)%4 == 0) {
 			my $readid = (split(/\s/,$line))[0];
 			$readid =~ s/^\@//;
+			$readid =~ s#\/\d$##;
 			$printbac = 1 if (exists $bacreads{$readid});
 			$fastqarr[0] = $line;
 		} elsif (($. == 2) || ($.-2)%4 == 0 ) {

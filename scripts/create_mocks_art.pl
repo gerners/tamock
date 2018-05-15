@@ -30,7 +30,7 @@ if ( -x "${wd}/../art/bin/art_illumina") {
 }
 
 
-my ($profile,$outdir,$refseq_folder,$model,$rlength,$mfl,$sfl,$modegz,$semode);
+my ($profile,$outdir,$refseq_folder,$model,$rlength,$mfl,$sfl,$modegz,$semode,$debug);
 GetOptions(	"outdir=s" => \$outdir,
 			"profile=s" => \$profile,
 			"refgenomes|R=s" => \$refseq_folder,
@@ -40,6 +40,7 @@ GetOptions(	"outdir=s" => \$outdir,
 			"illumina-model|M=s" => \$model,
 			"gzip" => \$modegz,
 			"single-end" => \$semode,
+			"debug+" => \$debug,
 			"help" => \&print_help);
 
 #TODO keep alignemt files option
@@ -59,7 +60,7 @@ print $SUM "Reference Name\tReference Seq ID\tReads/Refgen\tReads/Refseq\tLength
 
 while (my $line = <$PR>) {
 	#skip header
-	next if $.==1;
+	next if ($line =~ /^Abundance/) ;
 	
 	my ($abund, $reffile,$refgenlgth) = (split("\t",$line))[0,3,4]; #/^GCF_\d+\.\d_\w+_genomic.fna/
 	#check input
@@ -75,7 +76,6 @@ while (my $line = <$PR>) {
 	#distribute number of reads per genome on respective chromosome/contigs of ref genome
 	#split ref genomes if not present
 	#print summary of split ref genomes and sampled reads
-	 
 	simulate_nreads_art($abund,"${refseq_folder}/${reffile}",$refname,$refgenlgth,$outdir,$ref_seqs_dir,$SUM);
 }
 close $SUM;
@@ -231,6 +231,7 @@ sub simulate_nreads_art
 			next unless ($refseqs{$head1}{nreads});
 			my $art_cmd = "$art_path -nf 0 -ss ${model} --rcount $refseqs{$head1}{nreads} -l $rlength";
 			$art_cmd .= " --paired -m $mfl -s $sfl " unless $semode;
+			$art_cmd .= " --rndSeed 100" if $debug;
 			$art_cmd .= " -i $ref_seqs_dir/${head1}.fna -o ${outdir}/tmp/mockreads/mock.${head1}_";
 			chop $art_cmd if $semode; #remove trailing underscore in case of semode
 			

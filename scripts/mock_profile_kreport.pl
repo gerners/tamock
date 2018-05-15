@@ -220,7 +220,8 @@ while (my $line = <$NCBI>) {
 					assign_genome($taxid,$acc,$s_taxid,$name,$ass_lvl,$ftp,$rel_date,$refcat);
 				} else {
 					next if ($ass_lvl > $genomes{$taxid}{assembly} || $rel_date < $genomes{$taxid}{release});
-					warn "INFO: Multiple reference genomes for same strain taxid and date/completeness found.\n\tReference genome with accession '$genomes{$taxid}{accession}' is kept while '$acc' at line '$.' is dropped\n" if ($verbose > 1);
+					warn "INFO: Multiple reference genomes for same strain taxid and date/completeness found.\n",
+					"\tReference genome with accession '$genomes{$taxid}{accession}' is kept while '$acc' at line '$.' is dropped\n" if ($verbose > 1);
 					next;
 				}
 			#strain has no reference assigned -> assign current refseq genome as reference
@@ -318,7 +319,10 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 				#add reads to parent species ID
 				$species{$species{$taxid}{strainof}}{root_ass} += $species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass};
 				
-				warn "INFO:\t(st2sp) Reassigned '$species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass}' reads from strain with no refgenome to '$taxid'/'$species{$species{$taxid}{strainof}}{strains}{$taxid}{name}' to species lvl '$species{$taxid}{strainof}'/'$species{$species{$taxid}{strainof}}{name}'\t#reads assigned now to species '$species{$species{$taxid}{strainof}}{root_ass}'\n" if $verbose;
+				warn "INFO:\t(st2sp) Reassigned '$species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass}'",
+				" reads from strain with no refgenome to '$taxid'/'$species{$species{$taxid}{strainof}}{strains}{$taxid}{name}'",
+				" to species lvl '$species{$taxid}{strainof}'/'$species{$species{$taxid}{strainof}}{name}'\t",
+				"#reads assigned now to species '$species{$species{$taxid}{strainof}}{root_ass}'\n" if $verbose;
 				
 				#set assigned reads of strain to 0 as they are now assigned to parent species
 				$total_st2sp_reads += $species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass};
@@ -503,7 +507,7 @@ print "Assigned bacterial reads higher than species level: $total_reads_nonspeci
 print "Number of bacterial reads of total reads: $species{2}{root_read}/",($species{0}{root_read} + $species{1}{root_read})," or ", 
 	sprintf("%.2f",(($species{2}{root_read}/($species{0}{root_read} + $species{1}{root_read}))*100)),"\%\n";
 	
-if (($total_reads + $total_ua_reads + $total_reads_nonspecieslvl) != $species{2}{root_read}) {
+if ((defined $total_ua_reads && defined $total_reads_nonspecieslvl ) && ($total_reads + $total_ua_reads + $total_reads_nonspecieslvl) != $species{2}{root_read}) {
 	my $total_lost =  $species{2}{root_read} - $total_reads - $total_ua_reads - $total_reads_nonspecieslvl;
 	print "Remaining $total_lost/$species{2}{root_read} or ", 
 		sprintf("%.2f",(($total_lost/$species{2}{root_read})*100)),"\% are multimapping reads lost due to rounding\n";
