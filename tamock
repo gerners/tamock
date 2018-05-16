@@ -742,6 +742,7 @@ Usage: $0 [Parameters]
 	                   			($wd/assembly_summary.txt)
 	--ncbi-sum-update		Download current NCBI Assembly summary table and exit
 		                   		(downloads current '$ncbi_as_uri')
+	--download-refseq		Download all reference genomes from provided assembly-summary table. Requires option -R
 	-t/--threads			Number of threads for centrifuge (1)
 	-v/--verbose			Verbose mode, print detailed information to screen
 	
@@ -768,6 +769,7 @@ Usage: $0 [Parameters]
 	== Dependencies ==
 	
 	--install-deps			Install centrifuge and ART default versions (depends on libgsl)
+	--install-test			Test if installation was successfull
 	
 	
 	

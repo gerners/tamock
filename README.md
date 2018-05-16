@@ -51,9 +51,10 @@ RefSeq reference genomes are all saved within one directory. If the directory /<
 
 ### Install
 
-	git clone git@gitlab.com:gerners/tamock.git
+	git clone https://github.com/gerners/tamock.git
 	cd tamock
 	tamock --install-deps
+	tamock --install-test
 
 ## Quick start
 
@@ -128,6 +129,10 @@ NCBI assembly summary table from ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacte
 
 Update NCBI assembly summary to current version and replace old version at /installdir/assembly_summary.txt
 
+	--download-refseq
+
+Download all reference genomes from provided assembly-summary table. Requires option -R (directory to safe reference genomes)
+
 	-t/--threads
 
 Number of threads used by centrifuge. Defaults to 1.
@@ -192,4 +197,8 @@ Standard deviation of fragment size for paired-end simulations. Defaults to 10.
 
 	--install-deps
 
-Install centrifuge and ART default versions into the installation directory of tamock. Depends on libgsl (See Installation)
+Install centrifuge and ART default versions into the installation directory of tamock. Depends on libgsl (See Installation).
+
+	--install-test
+
+Test if installation was successfull.
