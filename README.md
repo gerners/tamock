@@ -44,10 +44,15 @@ If a centrifuge p+h+v index is placed at the install directory under
 <install_dir/centrifuge-index/p+h+v*>
 this index is used by default if no other index is provided to tamock.
 
-RefSeq reference genomes are all saved within one directory. If the directory /<tamock_install_dir>/refseq-genomes is created, this directory is used by default unless another directory is provided via the command line.
+RefSeq reference genomes are all saved within one directory. If the directory /<tamock_install_dir>/refseq-genomes is created, this directory is used by default unless another directory has to be provided via the command line.
 
 	#optional
 	mkdir /<tamock_install_dir>/refseq-genomes
+
+To speed up analysis, all bacterial RefSeq genomes can be downloaded before mock community creation (>100 GB) instead of only downloading required genomes during a single run.
+
+	#optional
+	tamock --download-refseq -R /path/to/refseq-genomes
 
 ### Install
 
