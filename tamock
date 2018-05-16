@@ -3,6 +3,7 @@
 use strict;
 use warnings;
 use Archive::Tar;
+use Config;
 use Digest::MD5 qw(md5 md5_hex md5_base64);
 use File::Basename;
 use File::Copy;
@@ -463,12 +464,25 @@ sub test_installation
 	my $rs2_md5 = $rsd2->hexdigest();
 	close $RS2;
 	
-	if ("$rs1_md5" eq "f58662e8101fdfebade45dec182458d5" && "$rs2_md5" eq "c119c0369c1f96b91e2bcc97d960d16b") {
-		print "#################################################\n","Test successfull, everything is installed correctly\n";
+	if ("$Config{osname}" eq "linux") {
+		if ("$rs1_md5" eq "f58662e8101fdfebade45dec182458d5" && "$rs2_md5" eq "c119c0369c1f96b91e2bcc97d960d16b") {
+			print "#################################################\n","Test successfull, everything is installed correctly\n";
+		} else {
+			print "#################################################\n","Test failed!\n",
+			"Installation not successful, please report ${wd}/testdata/testout/warnings.log at https://github.com/gerners/tamock/issues\n";
+		}
+	} elsif ("$Config{osname}" eq "darwin") {
+		if ("$rs1_md5" eq "8e2348d17af4646aa2db6503001f6323" && "$rs2_md5" eq "7debee7d63fdf189e9e17faece3d38b5") {
+			print "#################################################\n","Test successfull, everything is installed correctly\n";
+		} else {
+			print "#################################################\n","Test failed!\n",
+			"Installation not successful, please report ${wd}/testdata/testout/warnings.log at https://github.com/gerners/tamock/issues\n";
+		}
 	} else {
-		print "#################################################\n","Test failed!\n",
-		"Installation not successful, please report ${wd}/testdata/testout/warnings.log at https://github.com/gerners/tamock/issues\n";
+		warn "Unknown OS '$Config{osname}', test only implemented for 'linux' and 'darwin' (MacOS)\nInstallation success unknown\n";
 	}
+	
+	
 	
 	exit;
 }
