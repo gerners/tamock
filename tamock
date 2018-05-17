@@ -15,7 +15,6 @@ use Getopt::Long;
 use IPC::Cmd qw(can_run run run_forked);
 use IO::Compress::Gzip qw(gzip $GzipError) ;
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
-use List::Util qw(any);
 use Time::HiRes qw(gettimeofday tv_interval);
 
 #absolute path of install dir
@@ -216,9 +215,12 @@ for my $inttest ($abs_species_threshold,$length,$mfl, $sfl, $threads) {
 
 #ART models
 my @art_models = ("GA1", "GA2", "HS10", "HS20", "HS25", "HSXn", "HSXt", "MinS", "MSv1", "MSv3", "NS50");
-if (! any { $illumina_model } @art_models ) {
-	die "'$illumina_model' is not a valid model for ART. Please see documentation at https://github.com/gerners/tamock or art_illumina -h for valid options\n";
+my $flag;
+foreach my $artmodel (@art_models) {
+	$flag++ if( $artmodel eq $illumina_model)
 }
+die "'$illumina_model' is not a valid model for ART. ",
+"Please see documentation at https://github.com/gerners/tamock or art_illumina -h for valid options\n" unless $flag;
 
 ##########################################################################
 #run centrifuge
