@@ -59,8 +59,8 @@ GetOptions(	"outdir=s" => \$outdir,
 			"assembly-summary=s" => \$assembly_summary,
 			"min-abund-species:i" => \$abs_species_threshold,
 			"no-reassign" => \$no_strain_ra,
-			"centrifuge-kreport" => \$cent_krep,
-			"centrifuge-out-tab" => \$cent_tab,
+			"centrifuge-kreport=s" => \$cent_krep,
+			"centrifuge-out=s" => \$cent_tab,
 			
 			"illumina-model|M=s" => \$illumina_model,
 			"mean-fragment-length=i" => \$mfl,
@@ -766,7 +766,7 @@ Usage: $0 [Parameters]
 	== Mocks ==
 	
 	--centrifuge-kreport		Centrifuge kreport, skips centrifuge classification if provided
-	--centrifuge-out-tab		Centrifuge tabbed output (-S <cent-out>), skips centrifuge classification if provided
+	--centrifuge-out    		Centrifuge tabbed output (-S <cent-out>), skips centrifuge classification if provided
 	
 	--min-abund-species		Minimum number of classified reads for a species and all related strains
 	                 		to be included into the mock community (1)
