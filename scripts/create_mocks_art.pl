@@ -30,7 +30,7 @@ if ( -x "${wd}/../art/bin/art_illumina") {
 }
 
 
-my ($profile,$outdir,$refseq_folder,$model,$rlength,$mfl,$sfl,$modegz,$semode,$debug);
+my ($profile,$outdir,$refseq_folder,$model,$rlength,$mfl,$sfl,$modegz,$qprof1,$qprof2,$semode,$debug);
 GetOptions(	"outdir=s" => \$outdir,
 			"profile=s" => \$profile,
 			"refgenomes|R=s" => \$refseq_folder,
@@ -39,6 +39,8 @@ GetOptions(	"outdir=s" => \$outdir,
 			"sd-fragment-length=i" => \$sfl,
 			"illumina-model|M=s" => \$model,
 			"gzip" => \$modegz,
+			"qprof1=s" => \$qprof1,
+			"qprof2=s" => \$qprof2,
 			"single-end" => \$semode,
 			"debug+" => \$debug,
 			"help" => \&print_help);
@@ -229,7 +231,15 @@ sub simulate_nreads_art
 			}
 			print $SUM "$refname\t$head1\t$abund\t$refseqs{$head1}{nreads}\t$total_length\t$seqlen\t$refpath\t$ref_seqs_dir/${head1}.fna\n";
 			next unless ($refseqs{$head1}{nreads});
-			my $art_cmd = "$art_path -nf 0 -ss ${model} --rcount $refseqs{$head1}{nreads} -l $rlength";
+			my $art_cmd = "$art_path -nf 0 --rcount $refseqs{$head1}{nreads} -l $rlength";
+			if (defined $qprof1 && -r $qprof1) {
+				$art_cmd .= " --qprof1 $qprof1";
+			} else {
+				$art_cmd .= " -ss ${model}";
+			}
+			if (defined $qprof2 && -r $qprof2) {
+				$art_cmd .= " --qprof2 $qprof2";
+			}
 			$art_cmd .= " --paired -m $mfl -s $sfl " unless $semode;
 			$art_cmd .= " --rndSeed 100" if $debug;
 			$art_cmd .= " -i $ref_seqs_dir/${head1}.fna -o ${outdir}/tmp/mockreads/mock.${head1}_";
@@ -354,6 +364,8 @@ Usage: $0 [Parameters] <fastqfile1.fq> <fastfile2.fq> ...
 	--sd-fragment-length		Standard deviation of fragment size for paired-end simulations (19)
 	-M/--illumina-model		Illumima error model for ART (HS25)
 	                        	For available profiles check '$art_path -h'
+	--qprof1  	        	Precalculated forward-read quality profile for custom error profile in ART
+	--qprof2  	        	Precalculated reverse-read quality profile for custom error profile in ART
 	
 	-v/--verbose			Verbose mode, print detailed information to screen
 	

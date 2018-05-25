@@ -36,16 +36,15 @@ my $ncbi_as_uri = "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_s
 
 #config		refseq dir
 my ($readsf,$readsr,$readsu,$cent_krep,$cent_tab) = (undef,undef,undef,undef,undef);
-my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,
-	$debug,$verbose,$outdir,$install_deps,$install_test,$download_refseq);
+my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,$qprof1,$qprof2,
+	$length,$debug,$verbose,$outdir,$install_deps,$install_test,$download_refseq);
 
 #defaults
 my $threads = 1;
 my $abs_species_threshold = 1;
 my $mfl = 200;
 my $sfl = 10;
-my $length = 125;
-my $illumina_model = "HS25";
+my $illumina_model = "custom";
 
 GetOptions(	"outdir=s" => \$outdir,
 			
@@ -67,6 +66,8 @@ GetOptions(	"outdir=s" => \$outdir,
 			"sd-fragment-length=i" => \$sfl,
 			"length:i" => \$length,
 			"gzip" => \$modegz,
+			"qprof1=s" => \$qprof1,
+			"qprof2=s" => \$qprof2,
 			
 			"install-deps" => \$install_deps,
 			"install-test" => \$install_test,
@@ -107,7 +108,7 @@ if (defined $outdir && -d $outdir) {
 ########################
 ### dependencies ###
 
-my ($centrifuge_path,$kreport_path,$art_path);
+my ($centrifuge_path,$kreport_path,$art_path,$artprofiler_path);
 if ( -x "${wd}/centrifuge/bin/centrifuge" && -x "${wd}/centrifuge/bin/centrifuge-kreport" ) {
 	$centrifuge_path = "${wd}/centrifuge/bin/centrifuge";
 	$kreport_path = "${wd}/centrifuge/bin/centrifuge-kreport";
@@ -119,13 +120,18 @@ if ( -x "${wd}/centrifuge/bin/centrifuge" && -x "${wd}/centrifuge/bin/centrifuge
 		p_lock(1,1,"$outdir/warnings.log",
 		"WARNING: Using centrifuge found at '$centrifuge_path', version might be incompatible, consider running $0 --install-deps");
 }
-if ( -x "${wd}/art/bin/art_illumina") {
-	$art_path = "${wd}/bin/art_illumina";
+if ( -x "${wd}/art/bin/art_illumina" && -x "${wd}/art/bin/art_profiler_illumina") {
+	$art_path = "${wd}/art/bin/art_illumina";
+	$artprofiler_path = "${wd}/art/bin/art_profiler_illumina"; 
 } else {
 	$art_path = can_run('art_illumina') 
 		or die "'art_illumina' is not installed, please run $0 --install-deps\n";
 		p_lock(1,1,"$outdir/warnings.log",
 		"WARNING: Using art_illumina found at '$art_path', version might be incompatible, consider running $0 --install-deps");	
+	$artprofiler_path = can_run('art_profiler_illumina') 
+		or die "'art_profiler_illumina' is not installed, please run $0 --install-deps\n";
+		p_lock(1,1,"$outdir/warnings.log",
+		"WARNING: Using art_profiler_illumina found at '$artprofiler_path', version might be incompatible, consider running $0 --install-deps");	
 }
 
 ########################
@@ -152,6 +158,7 @@ if (! defined $assembly_summary) {
 ########################
 ### input sequence files ###
 my $semode;
+my @readsarr;
 {
 	#either paired or unpaired reads can be unitialized
 	no warnings 'uninitialized';
@@ -206,15 +213,41 @@ if (! $refseq_folder) {
 ########################
 ### ART parameters ###
 
+#determine readlength of inputfile if not provided
+if (! defined $length) {
+	my $IN;
+	if ($semode) {
+		$IN = r_file("$readsu");
+	} else {
+		$IN = r_file("$readsf");
+	}
+	$length = 0;
+	while (my $line = <$IN>) {
+		next unless (($.-2)%4 == 0);
+		last if $. > 1000;
+		chomp $line;
+		my $readlength = length($line);
+		$length = $readlength if ($readlength > $length) 
+	}
+	close $IN;
+}
+
 #positive values for min species abundance, read length, mean fragment lenght, sd fragment length, threads
-for my $inttest ($abs_species_threshold,$length,$mfl, $sfl, $threads) {
-	if (! $inttest =~ /^[1-9]+[0-9]*$/) {
-		die "'$inttest' is not a positive integer greater than 0\n";
+my %inttest = (
+	'min-abund-species' => $abs_species_threshold,
+	'length' => $length,
+	'mean-fragment-length' => $mfl,
+	'sd-fragment-length' => $sfl,
+	'threads' => $threads
+	);
+for my $para (keys %inttest) {
+	if (! $inttest{$para} =~ /^[1-9]+[0-9]*$/) {
+		die "Value '$inttest{$para}' for parameter '$para' is not a positive integer greater than 0\n";
 	}
 }
 
 #ART models
-my @art_models = ("GA1", "GA2", "HS10", "HS20", "HS25", "HSXn", "HSXt", "MinS", "MSv1", "MSv3", "NS50");
+my @art_models = ("GA1", "GA2", "HS10", "HS20", "HS25", "HSXn", "HSXt", "MinS", "MSv1", "MSv3", "NS50", "custom");
 my $flag;
 foreach my $artmodel (@art_models) {
 	$flag++ if( $artmodel eq $illumina_model)
@@ -222,8 +255,19 @@ foreach my $artmodel (@art_models) {
 die "'$illumina_model' is not a valid model for ART. ",
 "Please see documentation at https://github.com/gerners/tamock or art_illumina -h for valid options\n" unless $flag;
 
+#custom models
+if (defined $qprof1) {
+	die "Can't read ART quality profile '$qprof1'\n" unless (-r $qprof1);
+}
+if (defined $qprof2) {
+	die "Can't read ART quality profile '$qprof2'\n" unless (-r $qprof2);
+}
+
 ##########################################################################
 #run centrifuge
+
+my $t1 = [gettimeofday];
+
 if (! (defined $cent_krep && defined $cent_tab)) {
 	my $cent_cmd = "$centrifuge_path --out-fmt tab -x $index -p $threads";
 	if ($readsf && $readsr) {
@@ -234,7 +278,7 @@ if (! (defined $cent_krep && defined $cent_tab)) {
 	}
 	$cent_cmd = "$cent_cmd -S $outdir/classification_out/centrifuge.out --report-file $outdir/classification_out/centrifuge.report";
 	
-	p_lock(0,1,"$outdir/tamock.log",
+	p_lock(0,$verbose,"$outdir/tamock.log",
 		"#################################################\nClassifying sequences...");
 		
 	mkd("$outdir/classification_out");
@@ -242,8 +286,60 @@ if (! (defined $cent_krep && defined $cent_tab)) {
 	runcmd("$kreport_path -x $index $outdir/classification_out/centrifuge.out > $outdir/classification_out/centrifuge.kreport",$verbose);
 }
 
+my $msg = "Finished classification with runtime " . runtime(tv_interval($t1)) ;
+p_lock(0,1,"$outdir/tamock.log", "$msg");
+
 ##########################################################################
-#run create mocks
+#create mocks
+
+########################
+#custom quality profiles
+
+my $t2 = [gettimeofday];
+
+if ("$illumina_model" eq "custom") {
+	
+	p_lock(0,1,"$outdir/tamock.log",
+	"#################################################\nDetermining sequence quality profile(s)...");
+	
+	#link input filenames with specific names to ensure proper filenames for art_profiler
+	mkd("$outdir/tmpreads/art_profile");
+	
+	#single-end
+	my $read_suffix;
+	my $seqprof_cmd = "$artprofiler_path ${outdir}/tmpreads/art_profile/customProfile";
+	if ($semode) {
+		if ($readsu =~ /\.?(\w*(\.gz)?)$/) {
+			$read_suffix = $1;
+		} else {
+			die "Unexpected filename of '$readsu', probably contains non-alphanumeric symbols...\n";
+		}
+		my $linkpath = "${outdir}/tmpreads/art_profile/reads.${read_suffix}";
+		symlink("$readsu","$linkpath") or die "Creating symlink '$linkpath' failed: $!";
+		
+		$seqprof_cmd .= " ${outdir}/tmpreads/art_profile/ ${read_suffix} 2";
+		runcmd("$seqprof_cmd",$verbose);
+		
+	#paired
+	} else {
+		my $i = 1;
+		for my $readpath ($readsf,$readsr) {
+			if ($readpath =~ /\.?(\w*(\.gz)?)$/) {
+				$read_suffix = $1;
+			} else {
+				die "Unexpected filename of '$readpath', probably contains non-alphanumeric symbols...\n";
+			}
+			my $linkpath = "$outdir/tmpreads/art_profile/reads_${i}.${read_suffix}";
+			symlink("$readpath","$linkpath") or die "Creating symlink '$linkpath' for '$readpath' failed: $!";
+			$i++;
+		}
+		$seqprof_cmd .= " ${outdir}/tmpreads/art_profile/ ${read_suffix} 2";
+		runcmd("$seqprof_cmd",$verbose);
+	}
+}
+
+########################
+#create mock profile
 
 p_lock(0,1,"$outdir/tamock.log",
 	"#################################################\nCreating mock sequences...");
@@ -261,14 +357,38 @@ $profile_cmd .= " --no-reassign" if $no_strain_ra;
 runcmd("$profile_cmd",$verbose);
 
 ########################
-my $mock_cmd = "${wd}/scripts/create_mocks_art.pl -p $outdir/classification_out/fullprofile.tsv -M $illumina_model -l $length";
+#create mocks
+
+my $mock_cmd = "${wd}/scripts/create_mocks_art.pl -p $outdir/classification_out/fullprofile.tsv -l $length";
 $mock_cmd .= " --mean-fragment-length $mfl --sd-fragment-length $sfl -o $outdir/tmpreads -R $refseq_folder ";
+
+if ("$illumina_model" eq "custom") {
+	#external precalculated error profile
+	if (defined $qprof1) {
+		$mock_cmd .= " --qprof1 $qprof1" ;
+		$mock_cmd .= " --qprof2 $qprof2" if (defined $qprof2);
+	#calculated error profiles
+	} else {
+		if ($semode) {
+			$mock_cmd .= " --qprof1 ${outdir}/tmpreads/art_profile/customProfile.txt" ;
+		} else {
+			$mock_cmd .= " --qprof1 ${outdir}/tmpreads/art_profile/customProfileR1.txt";
+			$mock_cmd .= " --qprof2 ${outdir}/tmpreads/art_profile/customProfileR2.txt";
+		}
+	}
+#prebuild ART error profiles	
+} else {
+	$mock_cmd .= " -M $illumina_model";
+}
+
 $mock_cmd .= " --gzip" if $modegz;
 $mock_cmd .= " --single-end" if $semode;
 $mock_cmd .= " --debug" if $debug;
 runcmd("$mock_cmd",$verbose);
 
 ########################
+#separate bacterial from non-bacterial reads
+
 my $extractbac_cmd = "${wd}/scripts/extract_bacreads_kreport.pl";
 if ($cent_tab) {
 	$extractbac_cmd .= " -c $cent_tab";
@@ -374,7 +494,7 @@ if ($semode) {
 	}
 }
 
-my $msg = "Finished tamock with runtime " . runtime(tv_interval($t0)) ;
+$msg = "Finished tamock with runtime " . runtime(tv_interval($t0)) ;
 p_lock(0,1,"$outdir/tamock.log", "$msg");
 
 ##########################################################################
@@ -467,7 +587,7 @@ sub test_installation
 	close $RS2;
 	
 	if ("$Config{osname}" eq "linux") {
-		if ("$rs1_md5" eq "f58662e8101fdfebade45dec182458d5" && "$rs2_md5" eq "c119c0369c1f96b91e2bcc97d960d16b") {
+		if ("$rs1_md5" eq "7d507359c73f917ffbda3d8ca3456eff" && "$rs2_md5" eq "7fc59b75044391f006c2fb869c1d5331") {
 			print "#################################################\n","Test successfull, everything is installed correctly\n";
 		} else {
 			print "#################################################\n","Test failed!\n",
@@ -775,11 +895,13 @@ Usage: $0 [Parameters]
 	
 	== ART sequence simulator ==
 	
-	-M/--illumina-model		Illumima error model for ART (HS25)
-	                        		For available profiles run 'art_illumina -h'
+	-M/--illumina-model		Illumima error profile for ART. Either precalculated ART profile e.g. <HS25>, see 'art_illumina -h'
+	                        		or calculated from input sequences with option <custom> (custom)
 	-l/--length	    		Read length of simulated reads (125)
 	--mean-fragement-length		Mean size of fragments for paired-end simulations (200)
 	--sd-fragment-length		Standard deviation of fragment size for paired-end simulations (10)
+	--qprof1  	        	Precalculated forward-read quality profile for custom error profile in ART, together with -M custom
+	--qprof2  	        	Precalculated reverse-read quality profile for custom error profile in ART, together with -M custom
 	
 	
 	== Dependencies ==

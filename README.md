@@ -201,15 +201,25 @@ NCBI RefSeq collection. Default off.
 
 * -M/--illumina-model
 
-Illumina error model used by ART. Defaults to HiSeq 2500 (HS25). Available profiles are:
+Either 'custom' to calculate error profile of input reads or use precalculated ART Illumina error model. Available precalculated profiles are:
 GA1 - GenomeAnalyzer I (36bp,44bp),	GA2 - GenomeAnalyzer II (50bp, 75bp),
 HS10 - HiSeq 1000 (100bp),			HS20 - HiSeq 2000 (100bp),			HS25 - HiSeq 2500 (125bp, 150bp),
 HSXn - HiSeqX PCR free (150bp),		HSXt - HiSeqX TruSeq (150bp),		MinS - MiniSeq TruSeq (50bp),
 MSv1 - MiSeq v1 (250bp),			MSv3 - MiSeq v3 (250bp),			NS50 - NextSeq500 v2 (75bp)
 
+Defaults to sample specific error profile determination (custom).
+
+* --qprof1
+
+Precalculated forward-read quality profile for custom error profile in ART, together with -M custom. Replaces calculation of error profiles of input sequences.
+
+* --qprof2
+
+Precalculated reverse-read quality profile for custom error profile in ART, together with -M custom. Replaces calculation of error profiles of input sequences.
+
 * -l/--length
 
-Read length of simulated reads. Should be matched with a realistic error profile with according read lengths (-M). Defaults to 125 bp.
+Read length of simulated reads. Should be matched with a realistic error profile with according read lengths (-M). If not provided, determined from first 1000 reads of input sequences.
 
 * --mean-fragment-length
 
