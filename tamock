@@ -158,7 +158,6 @@ if (! defined $assembly_summary) {
 ########################
 ### input sequence files ###
 my $semode;
-my @readsarr;
 {
 	#either paired or unpaired reads can be unitialized
 	no warnings 'uninitialized';
@@ -550,6 +549,24 @@ sub install_dependencies
 	
 	rmrf("$art_arch");
 	rmrf("$art_build");
+	
+	#modify ART perl shebangs from /usr/bin/perl to /usr/bin/env perl
+	my @ART_scripts = ("aln2bed.pl","art_profiler_454","combinedAvg.pl","empDist.pl","fastqReadAvg.pl","map2bed.pl","summation.pl");
+	
+	foreach my $script (@ART_scripts) {
+		my $content;
+		open my $IN, '<:encoding(UTF-8)',"$wd/art/bin/$script" or die "Couldn't read file '$wd/art/bin/$script' : $!";
+		{
+			local $/ = undef;
+			$content = <$IN>;
+		}
+		close $IN;
+		$content =~ s+/usr/bin/perl+/usr/bin/env perl+;
+		open my $OUT, '>:encoding(UTF-8)',"$wd/art/bin/$script" or die "Couldn't write to file '$wd/art/bin/$script' : $!";
+		print $OUT $content;
+		close $OUT;
+	}
+	
 	
 	#get assembly summary file
 	my $as_file = fetchfile("$ncbi_as_uri","$wd");
