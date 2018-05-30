@@ -611,7 +611,7 @@ sub test_installation
 			"Installation not successful, please report ${wd}/testdata/testout/warnings.log at https://github.com/gerners/tamock/issues\n";
 		}
 	} elsif ("$Config{osname}" eq "darwin") {
-		if ("$rs1_md5" eq "8e2348d17af4646aa2db6503001f6323" && "$rs2_md5" eq "7debee7d63fdf189e9e17faece3d38b5") {
+		if ("$rs1_md5" eq "0c0f6da32698998aa54713b203c8f430" && "$rs2_md5" eq "d3c64d3ef2a8c4ab8a1e9a0824ddcb49") {
 			print "#################################################\n","Test successfull, everything is installed correctly\n";
 		} else {
 			print "#################################################\n","Test failed!\n",
