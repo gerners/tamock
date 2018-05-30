@@ -33,6 +33,15 @@ MacOS
  brew install gsl
 ```
 
+### Install
+
+```bash
+ git clone https://github.com/gerners/tamock.git
+ cd tamock
+ ./tamock --install-deps
+ ./tamock --install-test
+```
+
 Centrifuge indexes have to be downloaded separately.
 Prebuild indexes are provided on the centrifuge homepage at http://www.ccb.jhu.edu/software/centrifuge/
 
@@ -65,15 +74,6 @@ To speed up analysis, all bacterial RefSeq genomes can be downloaded before mock
 ```bash
  #optional
  tamock --download-refseq -R /path/to/refseq-genomes
-```
-
-### Install
-
-```bash
- git clone https://github.com/gerners/tamock.git
- cd tamock
- tamock --install-deps
- tamock --install-test
 ```
 
 ## Quick start
