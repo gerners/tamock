@@ -495,6 +495,7 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 }
 close $UA;
 
+print ">>>>>>>>>>";
 print "Assigned bacterial reads at species level or lower with refgenome: $total_reads/$species{2}{root_read} or ", 
 	sprintf("%.2f",(($total_reads/$species{2}{root_read})*100)),"\%\n";
 	
@@ -512,7 +513,7 @@ if ((defined $total_ua_reads && defined $total_reads_nonspecieslvl ) && ($total_
 	print "Remaining $total_lost/$species{2}{root_read} or ", 
 		sprintf("%.2f",(($total_lost/$species{2}{root_read})*100)),"\% are multimapping reads lost due to rounding\n";
 }
-
+print ">>>>>>>>>>";
 
 
 ##########################################################################

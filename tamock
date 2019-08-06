@@ -17,6 +17,9 @@ use IO::Compress::Gzip qw(gzip $GzipError) ;
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 use Time::HiRes qw(gettimeofday tv_interval);
 
+#version number
+my $tamock_version = "1.0.0";
+
 #absolute path of install dir
 my $wd;
 if (-l $0 ) {
@@ -97,7 +100,7 @@ if ($install_test) {
 ### outdir ###
 
 if (defined $outdir && -d $outdir) {
-	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...";
+	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
 	#give 10 secs to kill command if wrong dir is provided
 	sleep 10;
 } else {
@@ -363,6 +366,7 @@ if ($cent_krep) {
 $profile_cmd = "$profile_cmd -r $refseq_folder -o $outdir/classification_out/ -m $abs_species_threshold -v";
 $profile_cmd .= " --no-reassign" if $no_strain_ra;
 
+print("\nINFO: Downloading genomes from RefSeq might take up to multiple hours...\n\n");
 runcmd("$profile_cmd",$verbose);
 
 ########################
@@ -884,6 +888,8 @@ sub print_help
 	print STDERR <<EOD;
 
 Usage: $0 [Parameters]
+	
+	Version: $tamock_version
 	
 	tamock: Create targeted mock community for metagenomic sample
 	Default values in brackets
