@@ -231,7 +231,7 @@ sub simulate_nreads_art
 			}
 			print $SUM "$refname\t$head1\t$abund\t$refseqs{$head1}{nreads}\t$total_length\t$seqlen\t$refpath\t$ref_seqs_dir/${head1}.fna\n";
 			next unless ($refseqs{$head1}{nreads});
-			my $art_cmd = "$art_path -nf 0 --rcount $refseqs{$head1}{nreads} -l $rlength";
+			my $art_cmd = "$art_path -nf 0 -na --rcount $refseqs{$head1}{nreads} -l $rlength";
 			if (defined $qprof1 && -r $qprof1) {
 				$art_cmd .= " --qprof1 $qprof1";
 			} else {
@@ -259,7 +259,7 @@ sub simulate_nreads_art
 				close $MR;
 				close $RO;
 				rmrf("${outdir}/tmp/mockreads/mock.${head1}.fq");
-				rmrf("${outdir}/tmp/mockreads/mock.${head1}.aln");
+				#rmrf("${outdir}/tmp/mockreads/mock.${head1}.aln");
 				
 			} else {
 				my $MR1 =r_file("${outdir}/tmp/mockreads/mock.${head1}_1.fq");
@@ -282,7 +282,7 @@ sub simulate_nreads_art
 				}
 				for my $i (1,2) {
 					rmrf("${outdir}/tmp/mockreads/mock.${head1}_${i}.fq");
-					rmrf("${outdir}/tmp/mockreads/mock.${head1}_${i}.aln");
+					#rmrf("${outdir}/tmp/mockreads/mock.${head1}_${i}.aln");
 				}
 			}
 		}

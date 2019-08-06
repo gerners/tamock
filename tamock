@@ -17,6 +17,9 @@ use IO::Compress::Gzip qw(gzip $GzipError) ;
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 use Time::HiRes qw(gettimeofday tv_interval);
 
+#version number
+my $tamock_version = "1.0.0";
+
 #absolute path of install dir
 my $wd;
 if (-l $0 ) {
@@ -97,9 +100,9 @@ if ($install_test) {
 ### outdir ###
 
 if (defined $outdir && -d $outdir) {
-	warn "WARNING: Directory already exists, results might be overwritten\n";
-	#give 5 secs to kill command if wrong dir is provided
-	sleep 5;
+	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
+	#give 10 secs to kill command if wrong dir is provided
+	sleep 10;
 } else {
 	die "No output directory given\n" unless $outdir;
 	mkd("$outdir");
@@ -107,8 +110,9 @@ if (defined $outdir && -d $outdir) {
 
 ########################
 ### dependencies ###
-
 my ($centrifuge_path,$kreport_path,$art_path,$artprofiler_path);
+
+#centrifuge
 if ( -x "${wd}/centrifuge/bin/centrifuge" && -x "${wd}/centrifuge/bin/centrifuge-kreport" ) {
 	$centrifuge_path = "${wd}/centrifuge/bin/centrifuge";
 	$kreport_path = "${wd}/centrifuge/bin/centrifuge-kreport";
@@ -120,6 +124,10 @@ if ( -x "${wd}/centrifuge/bin/centrifuge" && -x "${wd}/centrifuge/bin/centrifuge
 		p_lock(1,1,"$outdir/warnings.log",
 		"WARNING: Using centrifuge found at '$centrifuge_path', version might be incompatible, consider running $0 --install-deps");
 }
+
+
+
+#art
 if ( -x "${wd}/art/bin/art_illumina" && -x "${wd}/art/bin/art_profiler_illumina") {
 	$art_path = "${wd}/art/bin/art_illumina";
 	$artprofiler_path = "${wd}/art/bin/art_profiler_illumina"; 
@@ -179,6 +187,11 @@ if (! $index) {
 				"INFO: Using default index 'p+h+v' for classification\n");
 	} else {
 		die "No index provided or found, please provide centrifuge-index\n";
+	}
+} else {
+	if (! -r "${index}.1.cf" ) {
+		print "INDEX: '$index'\n";
+		die "Provided centrifuge-index '$index' not readable\n";
 	}
 }
 
@@ -353,6 +366,7 @@ if ($cent_krep) {
 $profile_cmd = "$profile_cmd -r $refseq_folder -o $outdir/classification_out/ -m $abs_species_threshold -v";
 $profile_cmd .= " --no-reassign" if $no_strain_ra;
 
+print("\nINFO: Downloading genomes from RefSeq might take up to multiple hours...\n\n");
 runcmd("$profile_cmd",$verbose);
 
 ########################
@@ -514,7 +528,7 @@ sub install_dependencies
 	print "Downloading Centrifuge...\n";
 	
 	#caveat, fetch fails with no error if https is used, just retype to http
-	my $cf_arch = fetchfile('http://github.com/infphilo/centrifuge/archive/43d58d4cace4e9e32f832fb308279a4e7abc8536.zip',"$wd");
+	my $cf_arch = fetchfile('https://github.com/DaehwanKimLab/centrifuge/archive/6cc874e890249f6d8b479bd41b41e131f12c6796.zip',"$wd");
 	runcmd("$unzip_path $cf_arch",0);
 	
 	print "Building Centrifuge...\n";
@@ -579,6 +593,11 @@ sub install_dependencies
 sub test_installation
 {
 	print "#################################################\n","Testing Installation...\n";
+	
+	#remove test_directory from previous run if present
+	if (-d "${wd}/testdata/testout") {
+		rmrf("${wd}/testdata/testout");
+	}
 	
 	my $tamock_cmd = "${wd}/tamock -1 ${wd}/testdata/test_1.fq -2 ${wd}/testdata/test_2.fq";
 	$tamock_cmd .= " -x ${wd}/testdata/sa_ec -R ${wd}/testdata/refgenomes -o ${wd}/testdata/testout --debug";
@@ -869,6 +888,8 @@ sub print_help
 	print STDERR <<EOD;
 
 Usage: $0 [Parameters]
+	
+	Version: $tamock_version
 	
 	tamock: Create targeted mock community for metagenomic sample
 	Default values in brackets

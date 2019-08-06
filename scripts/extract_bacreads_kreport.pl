@@ -119,7 +119,6 @@ foreach my $fastqfile (@ARGV) {
 		die "Unexpected filename of inputfile '$fpath', expected <name.suffix(es)>\n";
 	}
 	
-	
 	$fpath = basename($fpath);
 	if ($fpath =~ /(\w+\.)(.+)/) {
 		$fastq_nobac = "$outdir/${1}nobac.${2}";
