@@ -141,15 +141,15 @@ Gzip all sequence files
 
 * -x/--index
 
-Centrifuge index (*.cf files). Only basename needed, e.g. /path/to/index.*.cf provide as -x /path/to/index
-Defaults to p+h+v if index files are found at /installdir/centrifuge-index/p+h+v.*.cf else needs to be provided.
+Centrifuge index (*.cf files). Only basename needed, e.g. /path/to/index.X.cf should be provided as '-x /path/to/index'.  
+Default: p+h+v if files present at /installdir/centrifuge-index/p+h+v.X.cf
 
 Index files can be downloaded from the centrifuge homepage at http://www.ccb.jhu.edu/software/centrifuge/
 
 * -a/--assembly-summary
 
-NCBI assembly summary table from ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt. Defaults to 
- /installdir/assembly_summary.txt which is downloaded at installation.
+NCBI assembly summary table from ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt.  
+Defaults to /installdir/assembly_summary.txt (downloaded during installation).
 
 * --ncbi-sum-update
 
