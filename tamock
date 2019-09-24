@@ -400,7 +400,7 @@ $mock_cmd .= " --debug" if $debug;
 runcmd("$mock_cmd",$verbose);
 
 ########################
-#separate bacterial from non-bacterial reads
+#separate reads with reference genome assigned from reads without 
 
 my $extractbac_cmd = "${wd}/scripts/extract_bacreads_kreport.pl";
 if ($cent_tab) {
@@ -409,7 +409,7 @@ if ($cent_tab) {
 	$extractbac_cmd .= " -c $outdir/classification_out/centrifuge.out";
 }
 $extractbac_cmd .= " --gzip" if $modegz;
-$extractbac_cmd .= " -x $index -o $outdir/tmpreads";
+$extractbac_cmd .= " -x $outdir/classification_out/taxa_w_refgenome.tsv -o $outdir/tmpreads";
 $extractbac_cmd .= " $readsf $readsr" if ($readsf && $readsr);
 $extractbac_cmd .= " $readsu" if ($readsu);
 
@@ -421,26 +421,26 @@ runcmd("$extractbac_cmd",$verbose);
 #single end mode, only se file expected
 if ($semode) {
 	my $read_b = basename($readsu);
-	my ($read_nbac,$read_fn,$read_sf);
+	my ($read_nref,$read_fn,$read_sf);
 	if ($read_b =~ /(\w+\.)(.+)/) {
-		$read_nbac = "$outdir/tmpreads/${1}nobac.${2}";
+		$read_nref = "$outdir/tmpreads/${1}noref.${2}";
 		$read_fn = $1;
 		$read_sf = $2;
 	} else {
 		die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
 	}
-	#FNB = no bacterial reads, FM = mock reads, FWGZ = merged outputfile
+	#FNR = no reference genome reads, FM = mock reads, FWGZ = merged outputfile
 	
 	my $mockfull = gz_path_check("$outdir/mock_${read_fn}${read_sf}",$modegz);
 	my $FWGZ = w_file("$mockfull");
 	
-	$read_nbac = gz_path_check("$read_nbac",$modegz);
-	my $FNB = r_file("$read_nbac");
+	$read_nref = gz_path_check("$read_nref",$modegz);
+	my $FNR = r_file("$read_nref");
 	
-	while (my $line = <$FNB>) {
+	while (my $line = <$FNR>) {
 		print $FWGZ $line;
 	}
-	close $FNB;
+	close $FNR;
 	
 	my $mockonly = gz_path_check("$outdir/tmpreads/mocked_bac.fq",$modegz);
 	my $FM = r_file("$mockonly");
@@ -454,9 +454,9 @@ if ($semode) {
 } else {
 	for my $file ($readsf,$readsr) {
 		my $read_b = basename($file);
-		my ($read_nbac,$read_fn,$read_sf);
+		my ($read_nref,$read_fn,$read_sf);
 		if ($read_b =~ /(\w+\.)(.+)/) {
-			$read_nbac = "$outdir/tmpreads/${1}nobac.${2}";
+			$read_nref = "$outdir/tmpreads/${1}noref.${2}";
 			$read_fn = $1;
 			$read_sf = $2;
 		} else {
@@ -466,13 +466,13 @@ if ($semode) {
 		my $mockfull = gz_path_check("$outdir/mock_${read_fn}${read_sf}",$modegz);
 		my $FWGZ = w_file("$mockfull");
 		
-		$read_nbac = gz_path_check("$read_nbac",$modegz);
-		my $FNB = r_file("$read_nbac");
+		$read_nref = gz_path_check("$read_nref",$modegz);
+		my $FNR = r_file("$read_nref");
 		
-		while (my $line = <$FNB>) {
+		while (my $line = <$FNR>) {
 			print $FWGZ $line;
 		}
-		close $FNB;
+		close $FNR;
 				
 		my $FM;
 		if ($file eq $readsf) {
@@ -489,19 +489,19 @@ if ($semode) {
 		close $FWGZ;
 		
 	}
-	#in paired end mode, only paired reads are mocked, copy non-bac single end file if present
+	#in paired end mode, only paired reads are mocked, copy non-reference single end file if present
 	if (defined $readsu) {
 		my $read_b = basename($readsu);
-		my ($read_nbac,$read_fn,$read_sf);
+		my ($read_nref,$read_fn,$read_sf);
 		if ($read_b =~ /(\w+\.)(.+)/) {
-			$read_nbac = "$outdir/tmpreads/${1}nobac.${2}";
+			$read_nref = "$outdir/tmpreads/${1}noref.${2}";
 			$read_fn = $1;
 			chop $read_fn;
 			$read_sf = $2;
 		} else {
 			die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
 		}
-		my $file_from = gz_path_check("$outdir/tmpreads/${1}nobac.${2}",$modegz);
+		my $file_from = gz_path_check("$outdir/tmpreads/${1}noref.${2}",$modegz);
 		my $file_to = gz_path_check("$outdir/mock_${read_fn}_se.${read_sf}",$modegz);
 		copy("$file_from","$file_to") or die "Copy '$file_from' to '$file_to' failed: $!";
 	}

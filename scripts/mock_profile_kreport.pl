@@ -529,7 +529,8 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 close $UA;
 
 #write out all counts for all taxid's with assigned/reassigned refgenomes which will be replaced
-my $TWR = w_file("$outdir/taxa_2b_replaced.tsv");
+my $TWR = w_file("$outdir/taxa_w_refgenome.tsv");
+print $TWR "taxid\treads_after_reassignment\n";
 foreach my $taxid (sort {$a <=> $b} keys %taxid_with_refgenome) {
 	print $TWR "$taxid\t$taxid_with_refgenome{$taxid}\n";
 }
