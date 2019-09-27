@@ -302,7 +302,7 @@ my $msg = "Finished classification with runtime " . runtime(tv_interval($t1)) ;
 p_lock(0,1,"$outdir/tamock.log", "$msg");
 
 ##########################################################################
-#create mocks
+#create benchmarks
 
 ########################
 #custom quality profiles
@@ -351,12 +351,12 @@ if ("$illumina_model" eq "custom") {
 }
 
 ########################
-#create mock profile
+#create benchmark profile
 
 p_lock(0,1,"$outdir/tamock.log",
-	"#################################################\nCreating mock sequences...");
+	"#################################################\nCreating benchmark sequences...");
 
-my $profile_cmd = "${wd}/scripts/mock_profile_kreport.pl -a $assembly_summary";
+my $profile_cmd = "${wd}/scripts/benchmark_profile_kreport.pl -a $assembly_summary";
 if ($cent_krep) {
 	$profile_cmd .= " -k $cent_krep";
 } else {
@@ -370,39 +370,39 @@ print("\nINFO: Downloading genomes from RefSeq might take up to multiple hours..
 runcmd("$profile_cmd",$verbose);
 
 ########################
-#create mocks
+#create benchmarks
 
-my $mock_cmd = "${wd}/scripts/create_mocks_art.pl -p $outdir/classification_out/fullprofile.tsv -l $length";
-$mock_cmd .= " --mean-fragment-length $mfl --sd-fragment-length $sfl -o $outdir/tmpreads -R $refseq_folder ";
+my $benchmark_cmd= "${wd}/scripts/create_benchmarks_art.pl -p $outdir/classification_out/fullprofile.tsv -l $length";
+$benchmark_cmd.= " --mean-fragment-length $mfl --sd-fragment-length $sfl -o $outdir/tmpreads -R $refseq_folder ";
 
 if ("$illumina_model" eq "custom") {
 	#external precalculated error profile
 	if (defined $qprof1) {
-		$mock_cmd .= " --qprof1 $qprof1" ;
-		$mock_cmd .= " --qprof2 $qprof2" if (defined $qprof2);
+		$benchmark_cmd.= " --qprof1 $qprof1" ;
+		$benchmark_cmd.= " --qprof2 $qprof2" if (defined $qprof2);
 	#calculated error profiles
 	} else {
 		if ($semode) {
-			$mock_cmd .= " --qprof1 ${outdir}/tmpreads/art_profile/customProfile.txt" ;
+			$benchmark_cmd.= " --qprof1 ${outdir}/tmpreads/art_profile/customProfile.txt" ;
 		} else {
-			$mock_cmd .= " --qprof1 ${outdir}/tmpreads/art_profile/customProfileR1.txt";
-			$mock_cmd .= " --qprof2 ${outdir}/tmpreads/art_profile/customProfileR2.txt";
+			$benchmark_cmd.= " --qprof1 ${outdir}/tmpreads/art_profile/customProfileR1.txt";
+			$benchmark_cmd.= " --qprof2 ${outdir}/tmpreads/art_profile/customProfileR2.txt";
 		}
 	}
 #prebuild ART error profiles	
 } else {
-	$mock_cmd .= " -M $illumina_model";
+	$benchmark_cmd.= " -M $illumina_model";
 }
 
-$mock_cmd .= " --gzip" if $modegz;
-$mock_cmd .= " --single-end" if $semode;
-$mock_cmd .= " --debug" if $debug;
-runcmd("$mock_cmd",$verbose);
+$benchmark_cmd.= " --gzip" if $modegz;
+$benchmark_cmd.= " --single-end" if $semode;
+$benchmark_cmd.= " --debug" if $debug;
+runcmd("$benchmark_cmd",$verbose);
 
 ########################
 #separate reads with reference genome assigned from reads without 
 
-my $extractbac_cmd = "${wd}/scripts/extract_bacreads_kreport.pl";
+my $extractbac_cmd = "${wd}/scripts/extract_refreads_kreport.pl";
 if ($cent_tab) {
 	$extractbac_cmd .= " -c $cent_tab";
 } else {
@@ -429,10 +429,10 @@ if ($semode) {
 	} else {
 		die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
 	}
-	#FNR = no reference genome reads, FM = mock reads, FWGZ = merged outputfile
+	#FNR = no reference genome reads, FB = benchmark reads, FWGZ = merged outputfile
 	
-	my $mockfull = gz_path_check("$outdir/mock_${read_fn}${read_sf}",$modegz);
-	my $FWGZ = w_file("$mockfull");
+	my $bmfull = gz_path_check("$outdir/benchmark_${read_fn}${read_sf}",$modegz);
+	my $FWGZ = w_file("$bmfull");
 	
 	$read_nref = gz_path_check("$read_nref",$modegz);
 	my $FNR = r_file("$read_nref");
@@ -442,13 +442,13 @@ if ($semode) {
 	}
 	close $FNR;
 	
-	my $mockonly = gz_path_check("$outdir/tmpreads/mocked_bac.fq",$modegz);
-	my $FM = r_file("$mockonly");
+	my $bmonly = gz_path_check("$outdir/tmpreads/simulated.fq",$modegz);
+	my $FBO = r_file("$bmonly");
 	
-	while (my $line = <$FM>) {
+	while (my $line = <$FBO>) {
 		print $FWGZ $line;
 	}
-	close $FM;
+	close $FBO;
 	close $FWGZ;
 	 
 } else {
@@ -463,8 +463,8 @@ if ($semode) {
 			die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
 		}
 		
-		my $mockfull = gz_path_check("$outdir/mock_${read_fn}${read_sf}",$modegz);
-		my $FWGZ = w_file("$mockfull");
+		my $bmfull = gz_path_check("$outdir/benchmark_${read_fn}${read_sf}",$modegz);
+		my $FWGZ = w_file("$bmfull");
 		
 		$read_nref = gz_path_check("$read_nref",$modegz);
 		my $FNR = r_file("$read_nref");
@@ -474,22 +474,22 @@ if ($semode) {
 		}
 		close $FNR;
 				
-		my $FM;
+		my $FBO;
 		if ($file eq $readsf) {
-			my $mockonly1 = gz_path_check("$outdir/tmpreads/mocked_bac_1.fq",$modegz);
-			$FM = r_file("$mockonly1");
+			my $bmonly1 = gz_path_check("$outdir/tmpreads/simulated_1.fq",$modegz);
+			$FBO = r_file("$bmonly1");
 		} else {
-			my $mockonly2 = gz_path_check("$outdir/tmpreads/mocked_bac_2.fq",$modegz);
-			$FM = r_file("$mockonly2");
+			my $bmonly2 = gz_path_check("$outdir/tmpreads/simulated_2.fq",$modegz);
+			$FBO = r_file("$bmonly2");
 		}
-		while (my $line = <$FM>) {
+		while (my $line = <$FBO>) {
 			print $FWGZ $line;
 		}		
-		close $FM;
+		close $FBO;
 		close $FWGZ;
 		
 	}
-	#in paired end mode, only paired reads are mocked, copy non-reference single end file if present
+	#in paired end mode, only paired reads are simulated, copy non-reference single end file if present
 	if (defined $readsu) {
 		my $read_b = basename($readsu);
 		my ($read_nref,$read_fn,$read_sf);
@@ -502,7 +502,7 @@ if ($semode) {
 			die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
 		}
 		my $file_from = gz_path_check("$outdir/tmpreads/${1}noref.${2}",$modegz);
-		my $file_to = gz_path_check("$outdir/mock_${read_fn}_se.${read_sf}",$modegz);
+		my $file_to = gz_path_check("$outdir/benchmark_${read_fn}_se.${read_sf}",$modegz);
 		copy("$file_from","$file_to") or die "Copy '$file_from' to '$file_to' failed: $!";
 	}
 }
@@ -609,8 +609,8 @@ sub test_installation
 		die "'$tamock_cmd' failed: $error_message\n";
 	}
 	
-	my $RS1 = r_file("${wd}/testdata/testout/mock_test_1.fq");
-	my $RS2 = r_file("${wd}/testdata/testout/mock_test_2.fq");
+	my $RS1 = r_file("${wd}/testdata/testout/benchmark_test_1.fq");
+	my $RS2 = r_file("${wd}/testdata/testout/benchmark_test_2.fq");
 	
 	my $rsd1 = Digest::MD5->new();
 	$rsd1->addfile($RS1);
@@ -891,7 +891,7 @@ Usage: $0 [Parameters]
 	
 	Version: $tamock_version
 	
-	tamock: Create targeted mock community for metagenomic sample
+	tamock: Create benchmark data based on a metagenomic sample
 	Default values in brackets
 	
 	==== Mandatory ====
@@ -903,8 +903,8 @@ Usage: $0 [Parameters]
 	-o/--outdir      		Output directory
 	
 	-R/--refgenomes			Directory to safe reference genomes in gzipped fasta format
-							(if present: $wd/refseq-genomes)
-	-x/--index   			Centrifuge index (if present: $wd/centrifuge-index/p+h+v)
+							(if present, default: $wd/refseq-genomes)
+	-x/--index   			Centrifuge index (if present, default: $wd/centrifuge-index/p+h+v)
 	
 	
 	
@@ -921,13 +921,13 @@ Usage: $0 [Parameters]
 	-v/--verbose			Verbose mode, print detailed information to screen
 	
 	
-	== Mocks ==
+	== Benchmarks ==
 	
 	--centrifuge-kreport		Centrifuge kreport, skips centrifuge classification if provided
 	--centrifuge-out    		Centrifuge tabbed output (-S <cent-out>), skips centrifuge classification if provided
 	
 	--min-abund-species		Minimum number of classified reads for a species and all related strains
-	                 		to be included into the mock community (1)
+	                 		to be simulated for benchmark data (1)
 	--no-reassign			No reassignment of read counts from strains without a reference to other 
 	               				classified strains/reference genomes of same species (off)
 	

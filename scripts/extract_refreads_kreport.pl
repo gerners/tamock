@@ -17,7 +17,7 @@ my $t0 = [gettimeofday];
 my ($outdir,$centr_tab,$tax2brep,$modegz,$verbose);
 
 GetOptions(	"outdir=s" => \$outdir,
-			"taxa-refgenomes|x" => $tax2brep,
+			"taxa-refgenomes|x=s" => \$tax2brep,
 			"centrifuge-result=s" => \$centr_tab,
 			"gzip" => \$modegz,
 			"verbose" => \$verbose,			
@@ -41,7 +41,7 @@ if (! -d $outdir) {
 }
 
 ##########################################################################
-#get all bacterial taxa from temporary file classification_out/taxa_w_refgenome.tsv (mock_profile_kreport.pl)
+#get all bacterial taxa from temporary file classification_out/taxa_w_refgenome.tsv (benchmark_profile_kreport.pl)
 my %taxa_repl;
 my $T2BR = r_file("$tax2brep");
 
@@ -70,11 +70,12 @@ my $nr_bacreads = keys %bacreads;
 warn "'$nr_bacreads' reads will be replaced with simulated sequences\n";
 
 ##########################################################################
-#read in FASTQ files and separate in bacterial and non bacterial
+#read in FASTQ files and separate into sequences with references and without
 my @fastqarr;
 my $printbac;
 warn "Splitting Fastq files ...\n";
 foreach my $fastqfile (@ARGV) {
+	print "-> running '$fastqfile'\n";
 	my $FQIN = r_file($fastqfile);
 	my ($fastq_noref,$fastq_ref,$fpath);
 	
@@ -207,7 +208,7 @@ sub print_help
 
 Usage: $0 [Parameters] <fastqfile1.fq> <fastfile2.fq> ...
 	
-	Extract classified bacterial sequences using centrifuge index
+	Extract classified bacterial sequences with assigned reference genomes
 	
 	==== Parameters ====
 	

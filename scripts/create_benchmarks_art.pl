@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-#create mock fastq files from the fullprofile.tsv file resulting form extract_bacterial_reads_from_kraken_report.pl
+#create simulated fastq files from the fullprofile.tsv file resulting form extract_bac_reads_from_kraken_report.pl
 
 use strict;
 use warnings;
@@ -52,7 +52,7 @@ if (! -d $outdir) {
 }
 
 my $PR = r_file($profile);
-my $ref_seqs_dir = "${outdir}/tmp/mockreads";
+my $ref_seqs_dir = "${outdir}/tmp/simreads";
 if (! -d $ref_seqs_dir) {
 	make_path("$ref_seqs_dir") or die "Couldn't create directory '$ref_seqs_dir': $!\n";
 }
@@ -85,13 +85,13 @@ close $SUM;
 
 #move result file(s) to outdir from tmp
 if ($semode) {
-	my $filename = "mocked_bac.fq";
+	my $filename = "simulated.fq";
 	$filename = "${filename}.gz" if $modegz;
 	move("${outdir}/tmp/${filename}","${outdir}/${filename}") 
 		or die "Couldn't move file '${outdir}/tmp/${filename}' to '${outdir}/${filename}' : $!";
 } else {
 	for my $i (1,2) {
-		my $filename = "mocked_bac_${i}.fq";
+		my $filename = "simulated_${i}.fq";
 		$filename = "${filename}.gz" if $modegz;
 		move("${outdir}/tmp/${filename}","${outdir}/${filename}") 
 			or die "Couldn't move file '${outdir}/tmp/${filename}' to '${outdir}/${filename}' : $!";
@@ -221,7 +221,7 @@ sub simulate_nreads_art
 		}
 	}
 	
-	#split reference genome files if not existent, print report and create mockfiles
+	#split reference genome files if not existent, print report and create benchmark files
 	foreach my $seqlen (sort {$b <=> $a} keys %refseqs_sort) {
 		foreach my $head1 (sort keys %{$refseqs_sort{$seqlen}}) {
 			if (! -f "$ref_seqs_dir/${head1}.fna") {
@@ -242,15 +242,15 @@ sub simulate_nreads_art
 			}
 			$art_cmd .= " --paired -m $mfl -s $sfl " unless $semode;
 			$art_cmd .= " --rndSeed 100" if $debug;
-			$art_cmd .= " -i $ref_seqs_dir/${head1}.fna -o ${outdir}/tmp/mockreads/mock.${head1}_";
+			$art_cmd .= " -i $ref_seqs_dir/${head1}.fna -o ${outdir}/tmp/simreads/sim.${head1}_";
 			chop $art_cmd if $semode; #remove trailing underscore in case of semode
 			
 			runcmd("$art_cmd",0);
 			
 			#concat to general base outfile
 			if ($semode) {
-				my $MR =r_file("${outdir}/tmp/mockreads/mock.${head1}.fq");
-				my $outfile = "${outdir}/tmp/mocked_bac.fq";
+				my $MR =r_file("${outdir}/tmp/simreads/sim.${head1}.fq");
+				my $outfile = "${outdir}/tmp/simulated.fq";
 				$outfile = "${outfile}.gz" if $modegz;
 				my $RO = a_file("$outfile");
 				while (my $line = <$MR>) {
@@ -258,20 +258,20 @@ sub simulate_nreads_art
 				}
 				close $MR;
 				close $RO;
-				rmrf("${outdir}/tmp/mockreads/mock.${head1}.fq");
-				#rmrf("${outdir}/tmp/mockreads/mock.${head1}.aln");
+				rmrf("${outdir}/tmp/simreads/sim.${head1}.fq");
+				#rmrf("${outdir}/tmp/simreads/sim.${head1}.aln");
 				
 			} else {
-				my $MR1 =r_file("${outdir}/tmp/mockreads/mock.${head1}_1.fq");
-				my $outfile1 = "${outdir}/tmp/mocked_bac_1.fq";
+				my $MR1 =r_file("${outdir}/tmp/simreads/sim.${head1}_1.fq");
+				my $outfile1 = "${outdir}/tmp/simulated_1.fq";
 				$outfile1 = "${outfile1}.gz" if $modegz;
 				my $RO1 = a_file("$outfile1");
 				while (my $line = <$MR1>) {
 					print $RO1 $line;
 				}
 				
-				my $MR2 =r_file("${outdir}/tmp/mockreads/mock.${head1}_2.fq");
-				my $outfile2 = "${outdir}/tmp/mocked_bac_2.fq";
+				my $MR2 =r_file("${outdir}/tmp/simreads/sim.${head1}_2.fq");
+				my $outfile2 = "${outdir}/tmp/simulated_2.fq";
 				$outfile2 = "${outfile2}.gz" if $modegz;
 				my $RO2 = a_file("$outfile2");
 				while (my $line = <$MR2>) {
@@ -281,8 +281,8 @@ sub simulate_nreads_art
 					close $fh or die "Couldn't close filehandle\n";
 				}
 				for my $i (1,2) {
-					rmrf("${outdir}/tmp/mockreads/mock.${head1}_${i}.fq");
-					#rmrf("${outdir}/tmp/mockreads/mock.${head1}_${i}.aln");
+					rmrf("${outdir}/tmp/simreads/sim.${head1}_${i}.fq");
+					#rmrf("${outdir}/tmp/simreads/sim.${head1}_${i}.aln");
 				}
 			}
 		}
@@ -347,17 +347,17 @@ sub print_help
 
 Usage: $0 [Parameters] <fastqfile1.fq> <fastfile2.fq> ...
 	
-	Create mocked reads for the bacterial fraction of a classified sample 
+	Simulate reads for the bacterial fraction of a classified sample 
 	
 	==== Parameters ====
 	
-	-p/--profile			Fullprofile table from mock_genomes_from_kraken_report.pl
+	-p/--profile			Fullprofile table from benchmark_profile_kreport.pl
 	-R/--refgenomes			Directory to safe reference genomes in gzipped fasta format
 	-x/--index   			Centrifuge index
 	-o/--outdir      		Output directory
 	
 	-g/--gzip       		Gzip all output sequence files (off)
-	--single-end     		Create single end mock sequence files instead of paired end (off)
+	--single-end     		Simulate single end sequence files instead of paired end (off)
 	
 	-l/--length	    		Read length of simulated reads (125)
 	--mean-fragement-length		Mean size of fragments for paired-end simulations (200)
