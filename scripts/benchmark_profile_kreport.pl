@@ -70,8 +70,8 @@ if (! -d $outdir) {
 #read in kraken report file
 
 #save level of line by counting leading whitespaces of Name field from Kraken report
-my $prev_level = 0;
-my $prev_taxid;
+my $sp_lvl = 0;
+my ($prev_taxid,$sp_taxid,$prev_href);
 my %species;
 
 #flag to only read in bacterial species as only RefSeq for Bacteria are checked
@@ -118,42 +118,107 @@ while (my $line = <$KR>) {
 	} else {
 		$bacflag = 1 if ($rank eq "D" && $taxid == 2 && $name eq "Bacteria");
 		warn "INFO: First bacterial taxa found at linenr" . ($. - 1) . "\n" if ($rank eq "D" && $taxid == 2 && $name eq "Bacteria" && $verbose > 1);
+		next;
 	}
 	next unless ($bacflag == 1);
 	
 	#check if current line is lower level (= more leading whitespaces) than the last matched species level 
 	#and therefore a strain, 
 	#if not remove the value to skip all further lines until another species is matched
-	if ($prev_level > 0 && $level > $prev_level) {
-		die "Unexpected line below species line found at line nr '$.', level '$level', prevlevel '$prev_level'\n" unless ($rank =~ /[-S]/);
+	if ($level > $sp_lvl && $sp_lvl > 0) {
+		die "Unexpected line below species line found at line nr '$.', level '$level', sp_level '$sp_lvl'\n" unless ($rank =~ /[-S]/);
 		
 		#skip groups of strains with no reads assigned, as they are all assigned to the strains under 
 		#the subspecies group in this case
 		next unless $r_ass;
 		
-		assign_strain($prev_taxid,$taxid,$r_read,$r_ass,$rank,$.,$name);
-		print $DB1 "$r_read\t$r_ass\t$rank\t$level\t$taxid\t$.\t$name\n" if $debug;
-		next;
+		print $DB2 "$r_read\t$r_ass\t$rank\t$level\t$taxid\t$.\t$name\n" if $debug;
+		
+		if ($level == $prev_href->{level}) {
+			
+			#reset prev* to parent of previous since same level is maintained
+			$prev_href = $species{$prev_href->{taxid}}{strainof};
+			
+			assign_strain($prev_href,$taxid,$r_read,$r_ass,$level,$.,$name);
+			
+			#set prev_href to current
+			$prev_href = $prev_href->{strains}{$taxid};
+			
+		} elsif ($level > $prev_href->{level}) {
+			
+			assign_strain($prev_href,$taxid,$r_read,$r_ass,$level,$.,$name);
+			
+			#set prev* to current
+			$prev_href = $prev_href->{strains}{$taxid};
+			
+		} elsif ($level < $prev_href->{level} && ($prev_href->{level} - $level) == 2) {
+			
+			#set prev* to parent of parent
+			my $samelvl_href = $species{$prev_href->{taxid}}{strainof};
+			$prev_href = $species{$samelvl_href->{taxid}}{strainof};
+			
+			assign_strain($prev_href,$taxid,$r_read,$r_ass,$level,$.,$name);
+			
+			#set prev* to current level since current entry is not a child of previous
+			$prev_href = $prev_href->{strains}{$taxid};
+			
+		} else {
+			die "BUG: Error when determing taxonomic species/strain level at line $. with level '$level' and prev_level '$prev_href->{level}'\n";
+		}
 		
 		
-	} else {
-		$prev_level = 0;
-		$prev_taxid = undef;
-	}
-	
-	#check if minimal number of reads is assigned at species level and save it if
-	if ($rank eq "S" && $r_read >= $abs_species_threshold) {
-		$prev_level = $level;
-		$prev_taxid = $taxid;
+	#save first occuring species level, check if minimal number of reads is assigned at species level
+	} elsif ($rank eq "S" && $r_read >= $abs_species_threshold) {
+		$sp_lvl = $level;
 		
 		#save species with taxid as key
-		assign_species($taxid,$r_read,$r_ass,$rank,$.,$name);
+		assign_species($taxid,$r_read,$r_ass,$level,$.,$name);
 		print $DB1 "$r_read\t$r_ass\t$rank\t$level\t$taxid\t$.\t$name\n" if $debug;
+		
+		$prev_href = $species{$taxid};
+		
 	} else {
+		print "$r_read\t$r_ass\t$rank\t$level\t$taxid\t$.\t$name\n" if $verbose > 2;
 		$total_reads_nonspecieslvl += $r_ass if ($r_ass);
 	}
 }
 close $KR;
+my $sequence;
+#########################################################
+sub reassign_strain_reads
+{
+	my $hstrains = shift;
+	if ($hstrains) {
+		for my $st_taxid (keys %{$hstrains}) {
+			reassign_strain_reads($hstrains->{$st_taxid}{strains});
+			
+			#check if strain has reads assigned
+			if ($hstrains->{$st_taxid}{root_ass}) {
+				$sequence++;
+				print "($sequence) st: $st_taxid\t$hstrains->{$st_taxid}{root_ass}\t$hstrains->{$st_taxid}{name}\n";
+			}
+			
+		}
+	}
+}
+my @toplvl_species;
+foreach my $taxid (sort {$a <=> $b} keys %species) {
+	next if $taxid < 3;
+	if (! $species{$taxid}{strainof}) {
+		push @toplvl_species,$taxid;
+	}
+}
+
+
+foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
+	print "\nsp: $taxid\t$species{$taxid}{root_ass}\t$species{$taxid}{name}\n";
+	reassign_strain_reads($species{$taxid}{strains});
+}
+
+die;
+
+
+#########################################################
 
 #################################################
 #read in assembly summary from NCBI and download/check all refseq genome files for species/strains present in kraken output file 
@@ -182,26 +247,23 @@ while (my $line = <$NCBI>) {
 	} else {
 		die "Unknown assembly level found at line '$.' and level '$ass_lvl'\n";
 	}
-
-	###################
-	#skip strains which have no own strain ID but use the taxid of the species level while there is already a reference present
-	next if ($s_taxid == $taxid && $refstrains{$s_taxid});
 	
+	###################
 	#check if another reference is already present for current ref genome, if, test for better completeness 
 	#via assembly level or most resent release date
 	#first check, if genome is representative/reference genome i.e. not with "na", set as species lvl ref genome
 	
-	#SPECIES present in krakenstyle report
-	if ($species{$taxid}{root_ass} ) {
+	#SPECIES/STRAIN present in krakenstyle report
+	if ($species{$taxid}) {
 		
-		#SPECIES & REFERENCE GENOME
+		#SPECIES/STRAIN & REFERENCE GENOME
 		#always save reference genome
 		if ($refcat eq "reference genome") { 
 			
 			assign_genome($taxid,$acc,$s_taxid,$name,$ass_lvl,$ftp,$rel_date,$refcat);
 			$refstrains{$s_taxid} = $taxid;
 			
-		#SPECIES & NONREF GENOME
+		#SPECIES/STRAIN & NONREF GENOME
 		} else {
 			
 			#if multiple reference genomes with the same taxid are present, rank in the order of
@@ -283,10 +345,8 @@ while (my $line = <$NCBI>) {
 		} else {
 			$refstrains{$s_taxid} = $taxid;
 		}
-		
-		#assign detected reference strain for species if strain != species
-		next if $s_taxid == $taxid;
-		assign_strain($s_taxid,$taxid,0,0,"-",$species{$s_taxid}{line},$name);
+		#assign detected reference strain for species
+		assign_strain($s_taxid,$taxid,0,0,$species{$s_taxid}{level},$species{$s_taxid}{line},$name);
 	
 	#STRAIN/SPECIES NOT PRESENT
 	#species of current strain was not detected in Kraken output, therefore skip entry
@@ -300,8 +360,17 @@ close $NCBI;
 my @missing_refs;
 foreach my $taxid (sort {$a <=> $b} keys %species) {
 	#next if root/kingdom || is a strain || has already a reference || no strains available for species
-	next if ($taxid < 3 || $species{$taxid}{strainof} || $refstrains{$taxid} || scalar keys %{$species{$taxid}{strains}} < 1);
-	push @missing_refs,$taxid; 
+	next if ($taxid < 3 || $species{$taxid}{strainof} || $refstrains{$taxid});
+	
+	#look for genome if no strains are present and directly assign refgenome
+	if (scalar keys %{$species{$taxid}{strains}} < 1) {
+		if ($genomes{$taxid}) {
+			$refstrains{$taxid} = $taxid;
+			assign_strain($taxid,$taxid,0,0,undef,undef,$genomes{$taxid}{organism});
+		}
+	} else {
+		push @missing_refs,$taxid;
+	}
 }
 
 foreach my $s_taxid (@missing_refs) {
@@ -333,11 +402,18 @@ foreach my $s_taxid (@missing_refs) {
 			if ($genomes{$taxid}) {
 				$refstrains{$s_taxid} = $taxid;
 			}
-			
 		}
 	}
 }
 undef @missing_refs;
+
+#check if all species genomes linked to their respective reference genomes
+foreach my $taxid (keys %refstrains) {
+	if (! exists $genomes{$taxid}) {
+		$genomes{$taxid} = $genomes{$refstrains{$taxid}};
+	}
+}
+
 
 ##########################################################################
 #MODIFY READ COUNTS
@@ -359,6 +435,9 @@ my $total_sp2st_reassignments;
 #create hash for all taxids with a ref_genome assigned for later separation of FASTQ-files in extract_bacreads_kreport.pl
 my %taxid_refgenome;
 
+
+#########################################################
+
 #STRAINS
 foreach my $taxid (sort {$a <=> $b} keys %species) {	
 
@@ -371,7 +450,7 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 		#STRAIN w/o refgenome
 		#if mode reassign, reassign all reads of a strain without a reference to species level from which it will be
 		#added equally to all remaining strains
-		if (! $genomes{$taxid}) {
+		if (! ($genomes{$taxid} || $refstrains{$taxid}) ) {
 			
 			if ( ! $no_strain_ra) {
 				#add reads to parent species ID
@@ -380,7 +459,7 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 				warn "INFO:\t(st2sp) Reassigned '$species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass}'",
 				" reads from strain with no refgenome to '$taxid'/'$species{$species{$taxid}{strainof}}{strains}{$taxid}{name}'",
 				" to species lvl '$species{$taxid}{strainof}'/'$species{$species{$taxid}{strainof}}{name}'\t",
-				"#reads assigned now to species '$species{$species{$taxid}{strainof}}{root_ass}'\n" if $verbose;
+				"#reads assigned now to species '$species{$species{$taxid}{strainof}}{root_ass}'\n" if $verbose > 1;
 				
 				#remember taxid to filter out all classified sequences since they will be replaced by simulated sequences
 				$taxid_refgenome{st2sp}{$taxid} = $species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass};
@@ -392,9 +471,6 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 				
 			}
 		} else {
-			#set flag for genome found at current strain
-			$species{$species{$taxid}{strainof}}{strains}{$taxid}{genome}++;
-			
 			#remember taxid to filter out all classified sequences since they will be replaced by simulated sequences
 			$taxid_refgenome{wref}{$taxid} = undef;
 		}
@@ -407,6 +483,7 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 	#skip entry for unclassified (0) and root (1)
 	next if $taxid < 3;		
 	
+	#reads can only be reassigned if there are strains present for the respective species
 	if ($species{$taxid}{root_ass} && $species{$taxid}{strains}) {
 					
 		#sum up all reads assigned to the strains of current species
@@ -429,7 +506,7 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 				
 				#previously, all strains with no reference genome had their reads assigned to species level,
 				#so all strains with no reads assigned do not have a reference genome or represent a reference genome for the species 
-				#which is not needed as other strains with reference genome have reads assigned
+				#which is not used as other strains with genomes present have reads assigned
 				next unless ($species{$taxid}{strains}{$strain}{root_ass} > 0);
 				
 				#add reads assigned to species level proportional to relative abundance of strains according to classification
@@ -440,7 +517,7 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 				$species{$taxid}{strains}{$strain}{root_ass} += $reads2add;
 				
 				warn "INFO:\t(sp2st) Reassigned '$reads2add' reads from species '$taxid'/'$species{$taxid}{name}' to strain ",
-					 "'$strain'/'$species{$taxid}{strains}{$strain}{name}' \t#reads species lvl '$species{$taxid}{root_ass}'\n" if ($reads2add && $verbose);
+					 "'$strain'/'$species{$taxid}{strains}{$strain}{name}' \t#reads species lvl '$species{$taxid}{root_ass}'\n" if ($reads2add && $verbose > 1);
 			
 			#if reads are only present at species level but none are assigned to any strain, use a single reference strain for said species
 			} 
@@ -451,7 +528,7 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 				#correct rounding error by adding/removing a read starting from strain with highest number of reads assigned
 				warn "INFO:\t(Correction) Proportional read assignment off by '" . ($roundcheck - $species{$taxid}{root_ass}) . 
 					 "' read(s) for species: '$taxid'/'$species{$taxid}{name} as $roundcheck/$species{$taxid}{root_ass} reads ",
-					 "were distributed to strains from species level\n" if $verbose;
+					 "were distributed to strains from species level\n" if $verbose > 1;
 				#sort strain taxid descending by assigned reads
 				my @sorted_keys = sort { $species{$taxid}{strains}{$b}{root_ass} <=> $species{$taxid}{strains}{$a}{root_ass} } keys %{$species{$taxid}{strains}};
 				
@@ -460,12 +537,12 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 						$species{$taxid}{strains}{$strain}{root_ass}--;
 						$rounding_diff--;
 						$roundcheck--;
-						warn "INFO:\t(Correction) Correct by removing 1 read from strain '$strain'/'$species{$taxid}{strains}{$strain}{name}'\n" if $verbose;
+						warn "INFO:\t(Correction) Correct by removing 1 read from strain '$strain'/'$species{$taxid}{strains}{$strain}{name}'\n" if $verbose > 1;
 					} elsif ($rounding_diff < 0) {
 						$species{$taxid}{strains}{$strain}{root_ass}++;
 						$rounding_diff++;
 						$roundcheck++;
-						warn "INFO:\t(Correction) Correct by adding 1 read to strain '$strain'/'$species{$taxid}{strains}{$strain}{name}'\n" if $verbose;
+						warn "INFO:\t(Correction) Correct by adding 1 read to strain '$strain'/'$species{$taxid}{strains}{$strain}{name}'\n" if $verbose > 1;
 					} else {
 						last;
 					}
@@ -487,36 +564,49 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 			
 			$species{$taxid}{root_ass} = 0;
 		
-		#reads assigned to species, strain(s) present but no reads assigned to strain(s)
+		#reads assigned to species, strain(s) present but no reads assigned to strain(s) -> assign to reference strain of species
+		} elsif (! $cur_strainreads && $refstrains{$taxid}) {
+			
+			#remember taxid to filter out all classified sequences since they will be replaced by simulated sequences
+			$taxid_refgenome{wref}{$taxid} = 0;
+			
+			#check if any strain was reassigned to species from which successfully sequences could be assigned to other strains with refgenomes
+			foreach my $strain ( keys %{$species{$taxid}{strains}}) {
+				if (exists $taxid_refgenome{st2sp}{$strain}) {
+					$taxid_refgenome{wref}{$strain} = 0;
+				}
+			}
+			
+			die "BUG: Reference strain '$refstrains{$taxid}' should be assigned to species '$taxid'\n" 
+				unless ($species{$taxid}{strains}{$refstrains{$taxid}} || ($taxid == $refstrains{$taxid}));
+			
+			$species{$taxid}{strains}{$refstrains{$taxid}}{root_ass} += $species{$taxid}{root_ass};
+			$species{$taxid}{root_ass} = 0;
+			
+			#link species taxid to the reference strain which will be sampled for current species
+			$genomes{$taxid} = $genomes{$refstrains{$taxid}};
+
 		} else {
 			
-			#check if a reference strain is found for a species without any reads classified to strains with refgenomes but reads assigned to species level
-			if ($refstrains{$taxid}) {
-				
-				#remember taxid to filter out all classified sequences since they will be replaced by simulated sequences
-				$taxid_refgenome{wref}{$taxid} = 0;
-				
-				#check if any strain was reassigned to species from which successfully sequences could be assigned to other strains with refgenomes
-				foreach my $strain ( keys %{$species{$taxid}{strains}}) {
-					if (exists $taxid_refgenome{st2sp}{$strain}) {
-						$taxid_refgenome{wref}{$strain} = 0;
-					}
+			#no refstrain for species present and no reads assigned to species -> unassigned species counts
+			die "BUG: Species '$taxid' should have a reference genome assigned, but has not despite a genome $genomes{$taxid}{species_tax}/$genomes{$taxid}{organism} being present for the species\n" 
+				if ($genomes{$taxid} || $refstrains{$taxid});
+			
+			warn "INFO:\t(Unassigned): No reference genomes could be assigned for species '$taxid' with $species{$taxid}{root_ass} reads assigned\n" if $verbose > 1;
+			foreach my $strain ( keys %{$species{$taxid}{strains}}) {
+				if (exists $taxid_refgenome{st2sp}{$strain}) {
+					warn "INFO: (Unassigned): No reference genomes could be assigned for strain '$strain'\n" if $verbose > 1;
 				}
-				
-				$species{$taxid}{strains}{$refstrains{$taxid}}{root_ass} += $species{$taxid}{root_ass};
-				$species{$taxid}{root_ass} = 0;
-				
-				
-			} else {
-				
-				#no refstrain for species present and no reads assigned to species -> unassigned species counts
-				die "BUG: Species '$taxid' should have a reference genome assigned, but has not despite a genome $genomes{$taxid}{species_tax}/$genomes{$taxid}{organism} being present for the species\n" 
-					if $genomes{$taxid};
-				
-				#safety check, else only one genome with the most complete and resent assembly should have been selected
-				die "BUG: More than one strain ('$nr_strains'/'$cur_strainreads') with no reads assigned and which is not a reference strain found for species '$taxid'",
-					"with '$species{$taxid}{root_ass}' reads\n" if ($nr_strains);
 			}
+		}
+	
+	#species without any strains
+	} elsif ($species{$taxid}{root_ass} && ! $species{$taxid}{strains}) {
+		
+		if ($genomes{$taxid} || $refstrains{$taxid}) {
+			$taxid_refgenome{wref}{$taxid} = 0;
+		} else {
+			warn "INFO: (Unassigned): No reference genomes could be assigned for species '$taxid' with $species{$taxid}{root_ass} reads assigned\n" if $verbose > 1;
 		}
 	}
 }
@@ -530,7 +620,6 @@ if ($total_sp2st_reads) {
 	warn "INFO: For '$total_sp2st_reassignments' species, reads were reassigned to the respective strains\n";
 	warn "\t#reads: $total_sp2st_reads/$species{2}{root_read} or ", sprintf("%.2f",(($total_sp2st_reads/$species{2}{root_read})*100)),"\%of all bacterial reads\n";
 }
-
 
 ##########################################################################
 #read in all currently present reference genome paths in provided directory
@@ -552,17 +641,18 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 	next if $taxid < 3;
 	
 	#some saved reference strains with no reassigned reads might have unitialized values
-	no warnings 'uninitialized';
+	#no warnings 'uninitialized';
 	
 	#first check if species
-	if (! $species{$taxid}{strainof}) {
-		
-		next unless $species{$taxid}{root_ass};
+	if ( exists $species{$taxid}{root_ass} ) {
 		
 		#check if reference genome is available or if reads were assigned to reference strain
-		if (! $genomes{$taxid} || ! $genomes{$refstrains{$taxid}}) {
-			print $UA "$taxid\t$species{$taxid}{root_ass}\t$species{$taxid}{name}\n"; 
-			$total_ua_reads += $species{$taxid}{root_ass} if ($species{$taxid}{root_ass} > 0);
+		if (! $genomes{$taxid}) {
+			if ($species{$taxid}{root_ass} > 0) {
+				print $UA "$taxid\t$species{$taxid}{root_ass}\t$species{$taxid}{name}\n";
+				$total_ua_reads += $species{$taxid}{root_ass};
+			}
+
 		} else {
 			
 			#remember taxid to filter out all classified sequences since they will be replaced by simulated sequences
@@ -573,12 +663,11 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 		}
 		
 	#else it has to be a strain
-	} else {
-		next if ($species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass} == 0);
-		if (! $genomes{$taxid} || ! $genomes{$refstrains{$taxid}}) {
-			die "BUG: Reads of strains with no reference genome not assigned to species level for taxid '$taxid'\n" unless $no_strain_ra;
-			print $UA "Strain\t$taxid\t$species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass}\t$species{$species{$taxid}{strainof}}{strains}{$taxid}{name}\n"; 
+	} elsif ($species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass}) {
+		if (! $genomes{$taxid}) {
+			print $UA "$taxid\t$species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass}\t$species{$species{$taxid}{strainof}}{strains}{$taxid}{name}\n"; 
 			$total_ua_reads += $species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass};
+			
 		} else {
 			
 			#remember taxid to filter out all classified sequences since they will be replaced by simulated sequences
@@ -587,6 +676,11 @@ foreach my $taxid (sort {$a <=> $b} keys %species) {
 			$total_reads += $species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass};
 			check_refgenome($taxid);
 		}
+	} else {
+		next if ($species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass} == 0 || $species{$taxid}{root_ass} == 0);
+		
+		die "BUG: Reads of strains with no reference genome not assigned to species level for taxid '$taxid'\n" unless $no_strain_ra;
+		
 	}
 }
 close $UA;
@@ -633,14 +727,10 @@ foreach my $taxid (sort {$a <=> $b} keys %genomes) {
 	next if (! exists $species{$taxid});
 	
 	#print only reference genomes for species/strains with reads assigned
-	if (exists $species{$taxid}{strainof}) {
+	if ( exists $species{$taxid}{strainof}) {
 		next unless $species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass} > 0;
 	} else {
 		next unless $species{$taxid}{root_ass} > 0;
-#		if (! $species{$taxid}{root_ass} > 0) {
-#			print ">>$taxid\t<$genomes{$taxid}{species_tax}>\t<$species{$taxid}{root_ass}>\n";
-#			next;
-#		}
 	}
 
 	my $base = basename("$genomes{$taxid}{ftp}");
@@ -648,15 +738,15 @@ foreach my $taxid (sort {$a <=> $b} keys %genomes) {
 	#some saved reference strains/species with no reassigned reads might have unitialized values
 	#no warnings 'uninitialized';
 	my $abundance;
-	if ($species{$taxid}{root_ass} > 0) {
+	if (exists $species{$taxid}{root_ass}) {
 		$abundance = $species{$taxid}{root_ass};
 		$genome_count++;
-	} elsif ($species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass} > 0) {
+	} elsif (exists $species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass}) {
 		$abundance = $species{$species{$taxid}{strainof}}{strains}{$taxid}{root_ass};
 		$genome_count++;
-	} else {
-		warn "Couldn't find abundance for taxid '$taxid'\n";
 	}
+	next unless $abundance;
+	
 	print $AF "${base}_genomic.fna\t$abundance\n";
 	print $GI "${base}_genomic.fna\t$refgenomes{$taxid}{genomelength}\t1\n";
 	print $IF "$abundance\t$taxid\t$genomes{$taxid}{organism}\t${base}_genomic.fna.gz\t$refgenomes{$taxid}{genomelength}\n";
@@ -667,6 +757,8 @@ close $IF;
 
 print "Selected $genome_count genomes\n";
 print "$0 took ",runtime(tv_interval($t0)), " to run\n";
+
+
 ##########################################################################
 #subroutines
 ##########################################################################
@@ -700,27 +792,28 @@ sub check_refgenome {
 }
 ##########################################################################
 sub assign_species {
-	my ($taxid,$r_read,$r_ass,$rank,$linenr,$name) = @_;
+	my ($taxid,$r_read,$r_ass,$level,$linenr,$name) = @_;
 	$species{$taxid} = { 
 		root_read => $r_read,
 		root_ass => $r_ass,
-		rank => $rank,
+		level => $level,
 		line => $linenr,
-		name => $name
+		name => $name,
+		taxid => $taxid
 	};
 }
 ##########################################################################
 sub assign_strain {
-	my ($prev_taxid,$taxid,$r_read,$r_ass,$rank,$linenr,$name) = @_;
-	$species{$prev_taxid}{strains}{$taxid} = { 
+	my ($prev_href,$taxid,$r_read,$r_ass,$level,$linenr,$name) = @_;
+	$prev_href->{strains}{$taxid} = { 
 		root_read => $r_read,
 		root_ass => $r_ass,
-		rank => $rank,
+		level => $level,
 		line => $linenr,
 		name => $name,
-		genome => 0
+		taxid => $taxid
 	};
-	$species{$taxid}{strainof} = $prev_taxid;
+	$species{$taxid}{strainof} = $prev_href;
 }
 ##########################################################################
 sub assign_genome {
