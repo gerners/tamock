@@ -1,7 +1,6 @@
 #!/usr/bin/env perl
 
-#Extract all reads classified as bacterial/remove all reads classified as bacterial using kraken report
-#either from Kraken or Centrifuge
+#Extract all reads with taxa assigned to a reference genome (from taxa_w_refgenome.tsv)
 
 use strict;
 use warnings;
@@ -15,11 +14,11 @@ use Time::HiRes qw(gettimeofday tv_interval);
 
 my $t0 = [gettimeofday];
 
-my ($outdir,$centr_tab,$centr_ind,$modegz,$verbose);
+my ($outdir,$centr_tab,$tax2brep,$modegz,$verbose);
 
 GetOptions(	"outdir=s" => \$outdir,
+			"taxa-refgenomes|x=s" => \$tax2brep,
 			"centrifuge-result=s" => \$centr_tab,
-			"index|x=s" => \$centr_ind,
 			"gzip" => \$modegz,
 			"verbose" => \$verbose,			
 			"help" => \&print_help);
@@ -32,53 +31,27 @@ if (! -r $centr_tab) {
 	warn "ERROR: No centrifuge tabbed input given, please provide via -c\n"; print_help();
 }
 
+if (! -r $tax2brep) {
+	warn "ERROR: No table containing taxa with reference genomes given, please provide via -x\n"; print_help();
+}
+
 die "No output directory given\n" unless $outdir;
 if (! -d $outdir) {
 	mkd("$outdir");
 }
 
-
-my $centi_path;
-if ( -x "${wd}/../centrifuge/bin/centrifuge-inspect") {
-	$centi_path = "${wd}/../centrifuge/bin/centrifuge-inspect";
-} else {
-	$centi_path = can_run('centrifuge-inspect')
-		or die "'centrifuge-inspect' is not installed, please run tamock.pl --install-deps\n";
-	warn "WARNING: Using centrifuge-inspect found at '$centi_path', version might be incompatible, consider running tamock.pl --install-deps\n";
-}
-
-
 ##########################################################################
-#get all bacterial taxa from index
-#load taxonomy tree from centrifuge
-#code snippet from https://github.com/infphilo/centrifuge/blob/master/centrifuge-kreport
-warn "Loading nodes file ...\n";
+#get all bacterial taxa from temporary file classification_out/taxa_w_refgenome.tsv (benchmark_profile_kreport.pl)
+my %taxa_repl;
+my $T2BR = r_file("$tax2brep");
 
-
-my %taxonomy;
-
-open my $IND, "-|", "$centi_path --taxonomy-tree $centr_ind" 
-	or die "ERROR: can't open centrifuge index file: $!\n";
-
-while (<$IND>) {
-	chomp;
-	my @fields = split /\t\|\t/;
-	my ($node_id, $parent_id, $rank) = @fields[0,1,2];
-	if ($node_id == 1) {
-		$parent_id = 0;
-	}
-	
-	#create array for childlist unless already set
-	$taxonomy{$parent_id}{childlist} ||= [];
-
-	push @{ $taxonomy{$parent_id}{childlist} }, $node_id;
-	$taxonomy{$node_id}{rank} = $rank;
+while (my $line = <$T2BR>) {
+	#skip header
+	next if $. == 1;
+	my @larr = split("\t",$line);
+	$taxa_repl{$larr[0]} = $larr[1];
 }
-close $IND;
-
-#create look up table for all taxa under bacteria
-my %bacspecies;
-get_childtaxa(2);
+close $T2BR;
 
 ##########################################################################
 #get all read IDs classified as bacterial from tabbed centrifuge output
@@ -88,22 +61,23 @@ my $CT = r_file($centr_tab);
 while (my $line= <$CT> ) {
 	chomp $line;
 	my ($readid,$taxid,$numMatches) = (split("\t",$line))[0,2,7];
-	if (exists $bacspecies{$taxid}) {
+	if (exists $taxa_repl{$taxid}) {
 		$bacreads{$readid} = $numMatches;
 	}
 }
 close $CT;
 my $nr_bacreads = keys %bacreads;
-warn "'$nr_bacreads' reads classified as bacterial detected\n";
+warn "'$nr_bacreads' reads will be replaced with simulated sequences\n";
 
 ##########################################################################
-#read in FASTQ files and separate in bacterial and non bacterial
+#read in FASTQ files and separate into sequences with references and without
 my @fastqarr;
 my $printbac;
 warn "Splitting Fastq files ...\n";
 foreach my $fastqfile (@ARGV) {
+	print "-> running '$fastqfile'\n";
 	my $FQIN = r_file($fastqfile);
-	my ($fastq_nobac,$fastq_bac,$fpath);
+	my ($fastq_noref,$fastq_ref,$fpath);
 	
 	#adapt filepath for gzip/non-gzip output
 	
@@ -121,13 +95,13 @@ foreach my $fastqfile (@ARGV) {
 	
 	$fpath = basename($fpath);
 	if ($fpath =~ /(\w+\.)(.+)/) {
-		$fastq_nobac = "$outdir/${1}nobac.${2}";
-		$fastq_bac = "$outdir/${1}bac.${2}";
+		$fastq_noref = "$outdir/${1}noref.${2}";
+		$fastq_ref = "$outdir/${1}ref.${2}";
 	} else {
 		die "Unexpected filename of inputfile '$fpath', expected <name.suffix(es)>\n";
 	}
-	my $FQNB = w_file($fastq_nobac);
-	my $FQB = w_file($fastq_bac);
+	my $FQNR = w_file($fastq_noref);
+	my $FQR = w_file($fastq_ref);
 	while (my $line = <$FQIN>) {
 		#first line is ID of read
 		if (($. == 1) || ($.-1)%4 == 0) {
@@ -144,17 +118,17 @@ foreach my $fastqfile (@ARGV) {
 			$fastqarr[3] = $line;
 			
 			if ($printbac) {
-				print $FQB @fastqarr;
+				print $FQR @fastqarr;
 			} else {
-				print $FQNB @fastqarr;
+				print $FQNR @fastqarr;
 			}
 			@fastqarr = ();
 			$printbac = undef;
 		}
 	}
 	close $FQIN;
-	close $FQNB;
-	close $FQB;
+	close $FQNR;
+	close $FQR;
 }
 
 print "$0 took ",runtime(tv_interval($t0)), " to run\n";
@@ -204,18 +178,6 @@ sub mkd
 	}
 }
 ##########################################################################
-sub get_childtaxa
-{
-	my $node = shift;
-	my $refchild = $taxonomy{$node}{childlist};
-	if ($refchild) {
-		for my $child (@$refchild) {
-			get_childtaxa($child);
-			$bacspecies{$child} = 1;
-		}
-	}
-}
-##########################################################################
 sub runtime
 {
 	#get runtime in seconds from e.g. "(time - $^T)"
@@ -246,12 +208,12 @@ sub print_help
 
 Usage: $0 [Parameters] <fastqfile1.fq> <fastfile2.fq> ...
 	
-	Extract classified bacterial sequences using centrifuge index
+	Extract classified bacterial sequences with assigned reference genomes
 	
 	==== Parameters ====
 	
 	-c/--centrifuge-result		Centrifuge classification outout in tab format
-	-x/--index	            	Centrifuge index 
+	-x/--taxa-refgenomes		Table containing all taxa with reference genomes assigned (taxa_w_refgenome.tsv)
 	-o/--outdir         		Output directory
 	
 	-g/--gzip           		Gzip all output sequence files (off)
