@@ -44,7 +44,6 @@ my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,$qp
 
 #defaults
 my $threads = 1;
-my $abs_species_threshold = 1;
 my $mfl = 200;
 my $sfl = 10;
 my $illumina_model = "custom";
@@ -59,7 +58,6 @@ GetOptions(	"outdir=s" => \$outdir,
 			
 			"refgenomes|R=s" => \$refseq_folder,
 			"assembly-summary=s" => \$assembly_summary,
-			"min-abund-species:i" => \$abs_species_threshold,
 			"no-reassign" => \$no_strain_ra,
 			"centrifuge-kreport=s" => \$cent_krep,
 			"centrifuge-out=s" => \$cent_tab,
@@ -246,7 +244,6 @@ if (! defined $length) {
 
 #positive values for min species abundance, read length, mean fragment lenght, sd fragment length, threads
 my %inttest = (
-	'min-abund-species' => $abs_species_threshold,
 	'length' => $length,
 	'mean-fragment-length' => $mfl,
 	'sd-fragment-length' => $sfl,
@@ -363,7 +360,7 @@ if ($cent_krep) {
 	$profile_cmd .= " -k $outdir/classification_out/centrifuge.kreport";
 }
 
-$profile_cmd = "$profile_cmd -r $refseq_folder -o $outdir/classification_out/ -m $abs_species_threshold -v";
+$profile_cmd = "$profile_cmd -r $refseq_folder -o $outdir/classification_out/ -v";
 $profile_cmd .= " --no-reassign" if $no_strain_ra;
 
 print("\nINFO: Downloading genomes from RefSeq might take up to multiple hours...\n\n");
@@ -925,9 +922,7 @@ Usage: $0 [Parameters]
 	
 	--centrifuge-kreport		Centrifuge kreport, skips centrifuge classification if provided
 	--centrifuge-out    		Centrifuge tabbed output (-S <cent-out>), skips centrifuge classification if provided
-	
-	--min-abund-species		Minimum number of classified reads for a species and all related strains
-	                 		to be simulated for benchmark data (1)
+
 	--no-reassign			No reassignment of read counts from strains without a reference to other 
 	               				classified strains/reference genomes of same species (off)
 	
