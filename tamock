@@ -420,7 +420,7 @@ if ($semode) {
 	my $read_b = basename($readsu);
 	my ($read_nref,$read_fn,$read_sf);
 	if ($read_b =~ /(\w+\.)(.+)/) {
-		$read_nref = "$outdir/tmpreads/${1}noref.${2}";
+		$read_nref = "$outdir/tmpreads/${1}not_repl.${2}";
 		$read_fn = $1;
 		$read_sf = $2;
 	} else {
@@ -453,7 +453,7 @@ if ($semode) {
 		my $read_b = basename($file);
 		my ($read_nref,$read_fn,$read_sf);
 		if ($read_b =~ /(\w+\.)(.+)/) {
-			$read_nref = "$outdir/tmpreads/${1}noref.${2}";
+			$read_nref = "$outdir/tmpreads/${1}not_repl.${2}";
 			$read_fn = $1;
 			$read_sf = $2;
 		} else {
@@ -491,14 +491,14 @@ if ($semode) {
 		my $read_b = basename($readsu);
 		my ($read_nref,$read_fn,$read_sf);
 		if ($read_b =~ /(\w+\.)(.+)/) {
-			$read_nref = "$outdir/tmpreads/${1}noref.${2}";
+			$read_nref = "$outdir/tmpreads/${1}not_repl.${2}";
 			$read_fn = $1;
 			chop $read_fn;
 			$read_sf = $2;
 		} else {
 			die "Unexpected format of inputfile '$read_b', expected <name.suffix(es)>\n";
 		}
-		my $file_from = gz_path_check("$outdir/tmpreads/${1}noref.${2}",$modegz);
+		my $file_from = gz_path_check("$outdir/tmpreads/${1}not_repl.${2}",$modegz);
 		my $file_to = gz_path_check("$outdir/benchmark_${read_fn}_se.${read_sf}",$modegz);
 		copy("$file_from","$file_to") or die "Copy '$file_from' to '$file_to' failed: $!";
 	}

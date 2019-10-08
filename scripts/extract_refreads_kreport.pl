@@ -59,6 +59,7 @@ warn "Loading read classifications ...\n";
 my %bacreads;
 my $CT = r_file($centr_tab);
 while (my $line= <$CT> ) {
+	next if $. == 1;
 	chomp $line;
 	my ($readid,$taxid,$numMatches) = (split("\t",$line))[0,2,7];
 	if (exists $taxa_repl{$taxid}) {
@@ -66,6 +67,24 @@ while (my $line= <$CT> ) {
 	}
 }
 close $CT;
+
+#all sequences with unique matches are definitely replaced by simulated reads, the more taxa they matched, the more likely their LCA is above species level
+#=> not simulated, therefore should stay in sample. Approximation to avoid repeated LCA calculation which is internal to centrifuge/kraken and would need
+#to be reproduced separately for each program
+my @readids = sort { $bacreads{$a} <=> $bacreads{$b} } keys(%bacreads);
+
+#get number of simulated sequences
+my $SIM = r_file("$outdir/simulated_1.fq");
+my $lines;
+while (my $line = <$SIM>) {
+	$lines++;
+}
+#only keep the same number of readIDs than simulated and omit remaining ones
+splice(@readids,($lines/4));
+
+#keep only subset of bacreads hash
+%bacreads = map { $_ => $bacreads{$_} } @readids;
+
 my $nr_bacreads = keys %bacreads;
 warn "'$nr_bacreads' reads will be replaced with simulated sequences\n";
 
@@ -95,8 +114,8 @@ foreach my $fastqfile (@ARGV) {
 	
 	$fpath = basename($fpath);
 	if ($fpath =~ /(\w+\.)(.+)/) {
-		$fastq_noref = "$outdir/${1}noref.${2}";
-		$fastq_ref = "$outdir/${1}ref.${2}";
+		$fastq_noref = "$outdir/${1}not_repl.${2}";
+		$fastq_ref = "$outdir/${1}repl_by_sim.${2}";
 	} else {
 		die "Unexpected filename of inputfile '$fpath', expected <name.suffix(es)>\n";
 	}

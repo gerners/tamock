@@ -46,7 +46,7 @@ GetOptions(	"kraken-report=s" => \$kraken_report,
 			"verbose+" => \$verbose,
 			"debug+" => \$debug,
 			"help" => \&print_help);
-
+$verbose = 3;
 #check mandatory options
 if (! -f $kraken_report) {
 	warn "ERROR: No Kraken input given/invalid file, please provide via -k\n"; print_help(1);
@@ -183,7 +183,7 @@ while (my $line = <$KR>) {
 		$prev_href = $species{$taxid};
 		
 	} else {
-		print "$r_read\t$r_ass\t$rank\t$level\t$taxid\t$.\t$name\n" if $verbose > 2;
+		print $DB2 "$r_read\t$r_ass\t$rank\t$level\t$taxid\t$.\t$name\n" if $debug;;
 		$total_reads_nonspecieslvl += $r_ass if ($r_ass);
 	}
 }
@@ -484,6 +484,8 @@ sub reassign_strain_reads
 				} else {
 					#remember taxid to filter out all classified sequences since they will be replaced by simulated sequences
 					$taxid_refgenome{wref}{$st_taxid} = undef;
+					print "wref1: $st_taxid\t-\n";
+					
 				}
 #				$sequence++;
 #				print "($sequence) st: $st_taxid\t$hstrains->{$st_taxid}{root_ass}\t$hstrains->{$st_taxid}{name}\n";
@@ -573,11 +575,13 @@ sub reassign_species_reads
 				}
 				
 				$taxid_refgenome{wref}{$sp_taxid} = 0;
+				print "wref2: $sp_taxid\t0\n";
 				
 				#check if any strain was reassigned to species from which successfully sequences could be assigned to other strains with refgenomes
 				foreach my $st_taxid ( keys %{$hspecies->{strains}}) {
 					if (exists $taxid_refgenome{st2sp}{$st_taxid}) {
 						$taxid_refgenome{wref}{$st_taxid} = 0;
+						print "wref3: $st_taxid\t0\n";
 					}
 				}
 				
@@ -591,12 +595,15 @@ sub reassign_species_reads
 			} elsif (! $cur_strainreads && $genomes{$sp_taxid}) {
 				
 				#remember taxid to filter out all classified sequences since they will be replaced by simulated sequences
-				$taxid_refgenome{wref}{$sp_taxid} = $hspecies->{root_ass};
+				print "wref4s set $sp_taxid\tfrom $taxid_refgenome{wref}{$sp_taxid} add $hspecies->{root_ass}\n";
+				$taxid_refgenome{wref}{$sp_taxid} = $hspecies->{root_ass} unless $taxid_refgenome{wref}{$sp_taxid};
+				print "wref4s set $sp_taxid\t$hspecies->{root_ass}\n";
 				
 				#check if any strain was reassigned to species from which successfully sequences could be assigned to other strains with refgenomes
 				foreach my $st_taxid ( keys %{$hspecies->{strains}}) {
 					if (exists $taxid_refgenome{st2sp}{$st_taxid}) {
 						$taxid_refgenome{wref}{$st_taxid} = 0;
+						print "wref5: $st_taxid\t0\n";
 					}
 				}
 	
@@ -618,6 +625,7 @@ sub reassign_species_reads
 		} else {
 			if ($genomes{$sp_taxid} || $refstrains{$sp_taxid}) {
 				$taxid_refgenome{wref}{$sp_taxid} = 0;
+				print "wref6: $sp_taxid\t0\n";
 			} else {
 				warn "INFO: (Unassigned): No reference genomes could be assigned for species '$sp_taxid' with $hspecies->{root_ass} reads assigned\n" if $verbose > 1;
 			}
@@ -631,6 +639,10 @@ sub reassign_species_reads
 			reassign_species_reads($hspecies->{strains}{$st_taxid});
 		}
 	}
+}
+print ">>>> before wref7\n";
+foreach my $taxid (sort {$a <=> $b} keys %{$taxid_refgenome{wref}}) {
+	print ">>>> $taxid\t$taxid_refgenome{wref}{$taxid}\n";
 }
 
 #reassign reads from strains without associated genomes to parent species/strain
@@ -688,6 +700,7 @@ sub check_refgenomes {
 			
 			#remember taxid to filter out all classified sequences since they will be replaced by simulated sequences
 			$taxid_refgenome{wref}{$sp_taxid} += $hspecies->{root_ass};
+			print "wref7a add $hspecies->{root_ass} with result $sp_taxid\t$hspecies->{root_ass}\n" unless $taxid_refgenome{wref}{$sp_taxid};
 			
 			$total_reads += $hspecies->{root_ass};
 			get_refgenome($sp_taxid);
@@ -727,6 +740,7 @@ my $TWR = w_file("$outdir/taxa_w_refgenome.tsv");
 print $TWR "taxid\treads_after_reassignment\n";
 foreach my $taxid (sort {$a <=> $b} keys %{$taxid_refgenome{wref}}) {
 	print $TWR "$taxid\t$taxid_refgenome{wref}{$taxid}\n";
+	print ">>>> $taxid\t$taxid_refgenome{wref}{$taxid}\n";
 }
 close $TWR;
 
