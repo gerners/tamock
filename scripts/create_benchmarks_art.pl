@@ -155,9 +155,9 @@ sub rmrf
 			for my $diag (@$err) {
 				my ($file, $message) = %$diag;
 				if ($file eq '') {
-					print "Error: $message\n";
+					warn "Error: $message\n";
 				} else {
-					print "Problem unlinking $file: $message\n";
+					warn "Problem unlinking $file: $message\n";
 				}
 			}
 		}
@@ -309,9 +309,9 @@ sub mkd
 		for my $diag (@$err) {
 			my ($file, $message) = %$diag;
 			if ($file eq '') {
-				print "General error: $message\n";
+				warn "General error: $message\n";
 			} else {
-				print "Problem creating $file: $message\n";
+				warn "Problem creating $file: $message\n";
 			}
 		}
 	}

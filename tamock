@@ -396,6 +396,10 @@ $benchmark_cmd.= " --single-end" if $semode;
 $benchmark_cmd.= " --debug" if $debug;
 runcmd("$benchmark_cmd",$verbose);
 
+#remove ART input files which are not needed anymore
+rmrf("$outdir/classification_out/abundanceFile.txt");
+rmrf("$outdir/classification_out/genomeInfo.txt");
+
 ########################
 #separate reads with reference genome assigned from reads without 
 
@@ -412,6 +416,8 @@ $extractbac_cmd .= " $readsu" if ($readsu);
 
 runcmd("$extractbac_cmd",$verbose);
 
+#remove temporary folder with all taxa with reference genome for read separation
+rmrf("$outdir/classification_out/taxa_w_refgenome.tsv");
 ########################
 #cat result files
 
@@ -503,8 +509,17 @@ if ($semode) {
 		copy("$file_from","$file_to") or die "Copy '$file_from' to '$file_to' failed: $!";
 	}
 }
+p_lock(0,1,"$outdir/tamock.log", "\n>>> Summary <<<");
+my $STATS = r_file("$outdir/stats.log");
+while (my $line = <$STATS>) {
+	chomp $line;
+	p_lock(0,1,"$outdir/tamock.log", "$line");
+}
 
-$msg = "Finished tamock with runtime " . runtime(tv_interval($t0)) ;
+#remove temporary stats file from benchmark_profile_kreport.pl
+rmrf("$outdir/stats.log");
+
+$msg = "\nFinished tamock with runtime " . runtime(tv_interval($t0)) ;
 p_lock(0,1,"$outdir/tamock.log", "$msg");
 
 ##########################################################################

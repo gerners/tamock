@@ -45,17 +45,20 @@ if (! -d $outdir) {
 my %taxa_repl;
 my $T2BR = r_file("$tax2brep");
 
+#count the number of total simulated sequences
+my $total_sim;
 while (my $line = <$T2BR>) {
 	#skip header
 	next if $. == 1;
 	my @larr = split("\t",$line);
-	$taxa_repl{$larr[0]} = $larr[1];
+	$taxa_repl{$larr[0]} = undef;
+	$total_sim += $larr[1];
 }
 close $T2BR;
 
 ##########################################################################
 #get all read IDs classified as bacterial from tabbed centrifuge output
-warn "Loading read classifications ...\n";
+print "Loading read classifications ...\n";
 my %bacreads;
 my $CT = r_file($centr_tab);
 while (my $line= <$CT> ) {
@@ -72,29 +75,24 @@ close $CT;
 #=> not simulated, therefore should stay in sample. Approximation to avoid repeated LCA calculation which is internal to centrifuge/kraken and would need
 #to be reproduced separately for each program
 my @readids = sort { $bacreads{$a} <=> $bacreads{$b} } keys(%bacreads);
+@readids = sort @readids;
 
-#get number of simulated sequences
-my $SIM = r_file("$outdir/simulated_1.fq");
-my $lines;
-while (my $line = <$SIM>) {
-	$lines++;
-}
 #only keep the same number of readIDs than simulated and omit remaining ones
-splice(@readids,($lines/4));
+splice(@readids,($total_sim/4));
 
 #keep only subset of bacreads hash
 %bacreads = map { $_ => $bacreads{$_} } @readids;
 
 my $nr_bacreads = keys %bacreads;
-warn "'$nr_bacreads' reads will be replaced with simulated sequences\n";
+print "'$nr_bacreads' reads will be replaced with simulated sequences\n";
 
 ##########################################################################
 #read in FASTQ files and separate into sequences with references and without
 my @fastqarr;
 my $printbac;
-warn "Splitting Fastq files ...\n";
+print "Splitting Fastq files ...\n";
 foreach my $fastqfile (@ARGV) {
-	print "-> running '$fastqfile'\n";
+	print "-> processing '$fastqfile'\n";
 	my $FQIN = r_file($fastqfile);
 	my ($fastq_noref,$fastq_ref,$fpath);
 	
