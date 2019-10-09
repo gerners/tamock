@@ -430,12 +430,12 @@ foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
 if ($total_st2sp_reads) {
 	warn "INFO: For '$total_st2sp_reassignments' strains with no refgenome reads were reassigned to species before distribution of species level reads ",
 		"to respective strains with reference genome\n" if $verbose;
-	warn "\t#reads: $total_st2sp_reads/$species{2}{root_read} or ", sprintf("%.2f",(($total_st2sp_reads/$species{2}{root_read})*100)),
+	warn "\tnr. of reads: $total_st2sp_reads/$species{2}{root_read} or ", sprintf("%.2f",(($total_st2sp_reads/$species{2}{root_read})*100)),
 		"\% of all bacterial reads\n" if $verbose;
 }
 if ($total_sp2st_reads) {
 	warn "INFO: For '$total_sp2st_reassignments' species, reads were reassigned to the respective strains\n" if $verbose;
-	warn "\t#reads: $total_sp2st_reads/$species{2}{root_read} or ", sprintf("%.2f",(($total_sp2st_reads/$species{2}{root_read})*100)),
+	warn "\tnr. of reads: $total_sp2st_reads/$species{2}{root_read} or ", sprintf("%.2f",(($total_sp2st_reads/$species{2}{root_read})*100)),
 		"\%of all bacterial reads\n" if $verbose;
 }
 
@@ -450,9 +450,22 @@ foreach (@reffiles) {
 
 ##########################################################################
 #load info for or download reference genomes for all entries with reads assigned
+#write ART input files and all unassigned entries to file
+my $GI = w_file("$outdir/genomeInfo.txt");
+my $AF = w_file("$outdir/abundanceFile.txt");
+my $IF = w_file("$outdir/fullprofile.tsv");
+my $UA = w_file("$outdir/norefgenome.tsv");
+
+print $IF "Abundance\tNCBI TaxID\tName\tReference filename\tReference genome length\n";
+print $UA "NCBI TaxID\tReads assigned\tName\n";
+	
 foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
 	check_refgenomes($species{$taxid});
 }
+close $UA;
+close $AF;
+close $GI;
+close $IF;
 
 #write out all counts for all taxid's with assigned/reassigned refgenomes which will be replaced
 my $TWR = w_file("$outdir/taxa_w_refgenome.tsv");
@@ -494,15 +507,6 @@ sub check_refgenomes {
 	my $hspecies = shift;
 	my $sp_taxid = $hspecies->{taxid};
 	
-	#write ART input files and all unassigned entries to file
-	my $GI = w_file("$outdir/genomeInfo.txt");
-	my $AF = w_file("$outdir/abundanceFile.txt");
-	my $IF = w_file("$outdir/fullprofile.tsv");
-	my $UA = w_file("$outdir/norefgenome.tsv");
-	
-	print $IF "Abundance\tNCBI TaxID\tName\tReference filename\tReference genome length\n";
-	print $UA "NCBI TaxID\tReads assigned\tName\n";
-	
 	#check if reads are assigned to current level
 	if ($hspecies->{root_ass}) {
 		
@@ -527,7 +531,6 @@ sub check_refgenomes {
 			print $AF "${base}_genomic.fna\t$hspecies->{root_ass}\n";
 			print $GI "${base}_genomic.fna\t$refgenomes{$sp_taxid}{genomelength}\t1\n";
 			print $IF "$hspecies->{root_ass}\t$sp_taxid\t$genomes{$sp_taxid}{organism}\t${base}_genomic.fna.gz\t$refgenomes{$sp_taxid}{genomelength}\n";
-			
 		}
 	}
 	
@@ -535,12 +538,9 @@ sub check_refgenomes {
 	if ($hspecies->{strains}) {
 		for my $st_taxid (keys %{$hspecies->{strains}}) {
 			check_refgenomes($hspecies->{strains}{$st_taxid});
+			
 		}
 	}
-	close $UA;
-	close $AF;
-	close $GI;
-	close $IF;
 }
 ##########################################################################
 #reassign all strains without a genome
