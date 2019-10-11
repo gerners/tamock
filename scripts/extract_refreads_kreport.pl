@@ -78,7 +78,7 @@ my @readids = sort { $bacreads{$a} <=> $bacreads{$b} } keys(%bacreads);
 @readids = sort @readids;
 
 #only keep the same number of readIDs than simulated and omit remaining ones
-splice(@readids,($total_sim/4));
+splice(@readids,$total_sim);
 
 #keep only subset of bacreads hash
 %bacreads = map { $_ => $bacreads{$_} } @readids;

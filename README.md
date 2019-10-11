@@ -1,10 +1,22 @@
 # tamock
-Targeted bacterial mock communities
+Benchmark data creation
 
-tamock creates sample-specific mock communities of metagenomic samples
-by classifying all sequence reads and replacing all bacterial reads
-with corresponding in silico sequences sampled randomly from RefSeq
-genomes.
+Tamock simulates habitat-specific benchmark data for metagenomic samples.
+
+Simulated metagenomic reads are widely used to benchmark software and workflows for metagenome interpretation. 
+Scope and power of metagenomic benchmarks depend on the selection of their underlying communities. As a result, 
+conclusions of benchmark studies are limited for distant communities towards the benchmark data used. Ideally,  
+simulations are therefore based on genomes, which resemble microbial communities realistically. 
+
+Tamock facilitates the simulation of metagenomic reads according to a microbial community, derived from real 
+metagenomic data. Thus, Tamock simulations enable an assessment of computational methods, workflows and parameters 
+specific for a microbial habitat. Tamock automatically determines taxonomic profiles from shotgun metagenomic data, 
+selects reference genomes accordingly and uses them to simulate metagenomic reads. Tamock is a user-friendly 
+command-line application, providing extensive supplementary information along with the simulation. 
+
+By default, the bacterial fraction of a community is simulated, however other domains such as Eukaryota, Archaea or Viruses
+can be simulated as well (-d/--domains option).
+
 Classification is implemented using Centrifuge (Kim *et al.* 2016) and
 sequencing read simulation is done by ART (Huang *et al.* 2012).
 
@@ -102,7 +114,7 @@ Single end simulation
 Classification is the most expensive task. Multiple threads speed up classification while RAM usage depends on the index used. 
 This step can also be skipped by providing pre-computed centrifuge classification results.
 
-CAVEAT: When using extern centrifuge results, ensure that centrifuge version 1.0.4 or higher is used and that the same index is provided to tamock.
+CAVEAT: When using external centrifuge results, ensure that centrifuge version 1.0.4 or higher is used and that the same index used is provided to tamock.
 
 ```bash
  tamock -1 <paired_1.fastq> -2 <paired_2.fastq> --centrifuge-kreport -o <output directory> \
@@ -135,6 +147,11 @@ Directory to store all RefSeq reference genomes.
 
 #### Optional
 
+* -d/--domains
+
+Select domains which should be simulated. Options are E(ukaryota), B(acteria), V(iruses), A(rchaea)
+For multiple selections, provide comma separated values e.g. <-d E,B>. Defaults to Bacteria (B).
+
 * --gzip
 
 Gzip all sequence files
@@ -153,9 +170,10 @@ Defaults to /installdir/assembly_summary.txt (downloaded during installation).
 
 * --ncbi-sum-update
 
-Update NCBI assembly summary to current version and replace old version at /installdir/assembly_summary.txt
+Update NCBI assembly summary to current version and replace old version at /installdir/assembly_summary_refseq.txt
+Alternatively manually download from ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt and provide via -a
 
-* --download-refseq
+* --get-refseq-genomes
 
 Download all reference genomes from provided assembly-summary table. Requires option -R (directory to safe reference genomes)
 
@@ -167,7 +185,7 @@ Number of threads used by centrifuge. Defaults to 1.
 
 Verbose mode, print detailed information to screen
 
-==== Mocks ====
+==== Benchmarks ====
 
 * --centrifuge-out
 
@@ -180,16 +198,11 @@ centrifuge -x index -1 forwardpairs.fq -2 reversepairs.fq --out-fmt tab -S centr
 * --centrifuge-kreport
 
 Centrifuge kraken-like report. If centrifuge-kreport and centrifuge output files are provided, classification is skipped and these files are used instead. 
-CAVEAT: The same index used for classification has to be provided to tamock as well via -x/--index.
+CAVEAT: The same index used for classification has to be provided to tamock via -x/--index.
 CAVEAT: Centrifuge version 1.0.4. or higher required
 
 Centrifuge example command:
 centrifuge-kreport -x index centrifuge.out > centrifuge.kreport
-
-* --min-abund-species
-
-Only include species with at least x classified reads into the mock community. Values above 1 effectively filter out spurious
-classifications, eliminating entries with less than x reads classified to species and relating strains. Defaults to 1.
 
 * --no-reassign
 

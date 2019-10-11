@@ -35,12 +35,12 @@ if (! -d $wd) {
 my $t0 = [gettimeofday];
 
 #default NCBI assembly summary table
-my $ncbi_as_uri = "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt";
+my $ncbi_as_uri = "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt";
 
 #config		refseq dir
 my ($readsf,$readsr,$readsu,$cent_krep,$cent_tab) = (undef,undef,undef,undef,undef);
 my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,$qprof1,$qprof2,
-	$length,$debug,$verbose,$outdir,$install_deps,$install_test,$download_refseq);
+	$length,$verbose,$outdir,$install_deps,$install_test,$download_refseq,$domains);
 
 #defaults
 my $threads = 1;
@@ -56,6 +56,7 @@ GetOptions(	"outdir=s" => \$outdir,
 			"index|x=s" => \$index,
 			"threads:i" => \$threads,
 			
+			"domains=s" => \$domains,
 			"refgenomes|R=s" => \$refseq_folder,
 			"assembly-summary=s" => \$assembly_summary,
 			"no-reassign" => \$no_strain_ra,
@@ -73,8 +74,7 @@ GetOptions(	"outdir=s" => \$outdir,
 			"install-deps" => \$install_deps,
 			"install-test" => \$install_test,
 			"ncbi-sum-update" => \$update_as,
-			"download-refseq" => \$download_refseq,
-			"debug+" => \$debug,
+			"get-refseq-genomes" => \$download_refseq,
 			"verbose" => \$verbose,
 			
 			"help" => \&print_help);
@@ -95,6 +95,27 @@ if ($install_test) {
 #sanity checks
 
 ########################
+### assembly summary table ###
+
+if (! defined $assembly_summary) {
+	if (-r "${wd}/assembly_summary.txt" && ! $update_as) {
+		$assembly_summary = "${wd}/assembly_summary_refseq.txt";
+	} else {
+		if ($update_as) {
+			#update assembly file in install dir
+			$assembly_summary = fetchfile("$ncbi_as_uri","$wd");
+			exit;
+		} else {
+			p_lock(0,1,"$outdir/tamock.log",
+				"Downloading '$ncbi_as_uri' to current directory ...\n");
+			$assembly_summary = fetchfile("$ncbi_as_uri");
+		}
+	}
+} else {
+	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
+}
+
+########################
 ### outdir ###
 
 if (defined $outdir && -d $outdir) {
@@ -105,6 +126,31 @@ if (defined $outdir && -d $outdir) {
 	die "No output directory given\n" unless $outdir;
 	mkd("$outdir");
 }
+
+########################
+### selected domains ###
+print "The following domains are selected for simulation:\n";
+if (! $domains) {
+	$domains = "B";
+	print "-Bacteria\n";
+} else {
+	foreach my $domain (split(",",$domains)) {
+		if ($domain !~ /[EAVB]/) {
+			die "Unknown value '$domain' for option -d, valid domains are [EAVB], separated by comma for multiple selections\n";
+		} elsif ($domain eq "E") {
+			print "-Eukaryota\n";
+		} elsif ($domain eq "A") {
+			print "-Archaea\n";
+		} elsif ($domain eq "B") {
+			print "-Bacteria\n";
+		} elsif ($domain eq "V") {
+			print "-Viruses\n";
+		} else {
+			die "BUG: errorneous domain option selection for option $domain\n";
+		}
+	}
+}
+
 
 ########################
 ### dependencies ###
@@ -138,27 +184,6 @@ if ( -x "${wd}/art/bin/art_illumina" && -x "${wd}/art/bin/art_profiler_illumina"
 		or die "'art_profiler_illumina' is not installed, please run $0 --install-deps\n";
 		p_lock(1,1,"$outdir/warnings.log",
 		"WARNING: Using art_profiler_illumina found at '$artprofiler_path', version might be incompatible, consider running $0 --install-deps");	
-}
-
-########################
-### assembly summary table ###
-
-if (! defined $assembly_summary) {
-	if (-r "${wd}/assembly_summary.txt" && ! $update_as) {
-		$assembly_summary = "${wd}/assembly_summary.txt";
-	} else {
-		if ($update_as) {
-			#update assembly file in install dir
-			$assembly_summary = fetchfile("$ncbi_as_uri","$wd");
-			exit;
-		} else {
-			p_lock(0,1,"$outdir/tamock.log",
-				"Downloading '$ncbi_as_uri' to current directory ...\n");
-			$assembly_summary = fetchfile("$ncbi_as_uri");
-		}
-	}
-} else {
-	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
 }
 
 ########################
@@ -393,12 +418,9 @@ if ("$illumina_model" eq "custom") {
 
 $benchmark_cmd.= " --gzip" if $modegz;
 $benchmark_cmd.= " --single-end" if $semode;
-$benchmark_cmd.= " --debug" if $debug;
 runcmd("$benchmark_cmd",$verbose);
 
 #remove ART input files which are not needed anymore
-rmrf("$outdir/classification_out/abundanceFile.txt");
-rmrf("$outdir/classification_out/genomeInfo.txt");
 
 ########################
 #separate reads with reference genome assigned from reads without 
@@ -915,20 +937,23 @@ Usage: $0 [Parameters]
 	-o/--outdir      		Output directory
 	
 	-R/--refgenomes			Directory to safe reference genomes in gzipped fasta format
-							(if present, default: $wd/refseq-genomes)
-	-x/--index   			Centrifuge index (if present, default: $wd/centrifuge-index/p+h+v)
+							(if present, defaults to: $wd/refseq-genomes)
+	-x/--index   			Centrifuge index (if present, defaults to: $wd/centrifuge-index/p+h+v)
 	
 	
 	
 	==== Optional ====
 	
+	-d/--domains			Select domains which should be simulated. Options are E(ukaryota), B(acteria), V(iruses), A(rchaea)
+							For multiple selections, provide comma separated values e.g. <-d E,B>. (B)
+	
 	--gzip    	        	Gzip all output sequence files (off)
 	
-	-a/--assembly-summary		NCBI Assembly summary table to select reference genomes 
-	                   			($wd/assembly_summary.txt)
-	--ncbi-sum-update		Download current NCBI Assembly summary table and exit
+	-a/--assembly-summary		NCBI RefSeq Assembly summary table to select reference genomes 
+	                   			($wd/assembly_summary_refseq.txt)
+	--ncbi-sum-update		Download current NCBI RefSeq Assembly summary table into install directory and exit
 		                   		(downloads current '$ncbi_as_uri')
-	--download-refseq		Download all reference genomes from provided assembly-summary table. Requires option -R
+	--get-refseq-genomes	Download all reference genomes from provided assembly-summary table. Requires option -R
 	-t/--threads			Number of threads for centrifuge (1)
 	-v/--verbose			Verbose mode, print detailed information to screen
 	

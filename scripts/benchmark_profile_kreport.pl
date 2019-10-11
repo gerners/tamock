@@ -32,19 +32,19 @@ my $t0 = [gettimeofday];
 
 ##########################################################################
 #option handling
-my ($kraken_report,$assembly_summary,$refseq_folder,$no_strain_ra,$debug);
+my ($kraken_report,$assembly_summary,$refseq_folder,$no_strain_ra,$domains);
 
 #set defaults
 my $outdir = getcwd;
 my $verbose = 0;
 
 GetOptions(	"kraken-report=s" => \$kraken_report,
+			"domains=s" => \$domains,
 			"assembly-summary=s" => \$assembly_summary,
 			"refgenomes|R=s" => \$refseq_folder,
 			"outdir=s" => \$outdir,
 			"no-reassign" => \$no_strain_ra,
 			"verbose+" => \$verbose,
-			"debug+" => \$debug,
 			"help" => \&print_help);
 
 #check mandatory options
@@ -63,6 +63,27 @@ if (! -d $refseq_folder) {
 if (! -d $outdir) {
 	mkd("$outdir");
 }
+#if no domains are selected, only simulate bacterial sequences by default
+my %selected_domains;
+if (! $domains) {
+	$selected_domains{"Bacteria"} = undef;
+} else {
+	foreach my $domain (split(",",$domains)) {
+		if ($domain !~ /[EAVB]/) {
+			die "Unknown value '$domain' for option -d, valid domains are [EAVB], separated by comma for multiple selections\n";
+		} elsif ($domain eq "E") {
+			$selected_domains{"Eukaryota"} = undef;
+		} elsif ($domain eq "A") {
+			$selected_domains{"Archaea"} = undef;
+		} elsif ($domain eq "B") {
+			$selected_domains{"Bacteria"} = undef;
+		} elsif ($domain eq "V") {
+			$selected_domains{"Viruses"} = undef;
+		} else {
+			die "BUG: errorneous domain option selection for option $domain\n";
+		}
+	}
+}
 
 ##########################################################################
 #read in kraken report file
@@ -72,9 +93,10 @@ my $sp_lvl = 0;
 my $g_lvl = 0;
 my ($prev_taxid,$sp_taxid,$prev_href);
 my %species;
+my %domains;
 
 #flag to only read in bacterial species as only RefSeq for Bacteria are checked
-my $bacflag = 0;
+my $domflag = 0;
 
 my $total_reads_nonspecieslvl;
 
@@ -92,26 +114,25 @@ while (my $line = <$KR>) {
 	
 	#save nr of unclassified, root and bacterial reads
 	if ($. == 1 && $rank eq "U") {
-		assign_species($taxid,$r_read,$r_ass,$rank,$.,$name);
-				
+		assign_domain($taxid,$r_read,$r_ass,$rank,$.,$name);
+		next;
 	} elsif ($. == 2 && $name eq "root") {
-		assign_species($taxid,$r_read,$r_ass,$rank,$.,$name);
-		
-	} elsif ($rank eq "D" && $name eq "Bacteria") {
-		assign_species($taxid,$r_read,$r_ass,$rank,$.,$name);
+		assign_domain($taxid,$r_read,$r_ass,$rank,$.,$name);
+		next;
+	} elsif ($rank eq "D" && exists $selected_domains{$name}) {
+		assign_domain($taxid,$r_read,$r_ass,$rank,$.,$name);
 		$total_reads_nonspecieslvl += $r_ass if ($r_ass);
-	}
-	
-	#check if bacterial line is reached or any other domain after that and skip before and afterwards
-	if ($bacflag) {
-		$bacflag = 0 if ($rank eq "D");
-		warn "INFO: Last bacterial taxa found at linenr $.\n" if ($rank eq "D" && $verbose > 1);
-	} else {
-		$bacflag = 1 if ($rank eq "D" && $taxid == 2 && $name eq "Bacteria");
-		warn "INFO: First bacterial taxa found at linenr" . ($. - 1) . "\n" if ($rank eq "D" && $taxid == 2 && $name eq "Bacteria" && $verbose > 1);
+		$domflag = 1;
+		warn "INFO: Reading all entries for '$name'...\n" if $verbose > 1;
 		next;
 	}
-	next unless ($bacflag == 1);
+	
+	#check if new domain line is reached and not selected in previous check, therefore all entries should be skipped
+	if ($domflag) {
+		$domflag = 0 if ($rank eq "D");
+		warn "INFO: Skipping all entries for '$name'\n" if $verbose > 1;
+	}
+	next unless ($domflag == 1);
 	
 	if ($rank eq "G") {
 		$g_lvl = $level;
@@ -119,7 +140,7 @@ while (my $line = <$KR>) {
 		print "G:\t$r_read\t$r_ass\t$rank\t$level\t$taxid\t$.\t$name\n" if $verbose > 2;
 		$total_reads_nonspecieslvl += $r_ass if ($r_ass);
 	
-	} elsif ($rank =~ /^[PCOF]$/) {
+	} elsif ($rank =~ /^[PCOF]$/ || $level <= $g_lvl) {
 		$sp_lvl = 0;
 		print "X:\t$r_read\t$r_ass\t$rank\t$level\t$taxid\t$.\t$name\n" if $verbose > 2;
 		$total_reads_nonspecieslvl += $r_ass if ($r_ass);
@@ -182,7 +203,6 @@ close $KR;
 #create list with all toplevel species for later iterations
 my @toplvl_species;
 foreach my $taxid (sort {$a <=> $b} keys %species) {
-	next if $taxid < 3;
 	if (! $species{$taxid}{strainof}) {
 		push @toplvl_species,$taxid;
 	}
@@ -428,15 +448,10 @@ foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
 
 
 if ($total_st2sp_reads) {
-	warn "INFO: For '$total_st2sp_reassignments' strains with no refgenome reads were reassigned to species before distribution of species level reads ",
-		"to respective strains with reference genome\n" if $verbose;
-	warn "\tnr. of reads: $total_st2sp_reads/$species{2}{root_read} or ", sprintf("%.2f",(($total_st2sp_reads/$species{2}{root_read})*100)),
-		"\% of all bacterial reads\n" if $verbose;
+	warn "INFO: For '$total_st2sp_reassignments' strains with $total_st2sp_reads without reference genomes were reassigned to parent species\n" if $verbose;
 }
 if ($total_sp2st_reads) {
-	warn "INFO: For '$total_sp2st_reassignments' species, reads were reassigned to the respective strains\n" if $verbose;
-	warn "\tnr. of reads: $total_sp2st_reads/$species{2}{root_read} or ", sprintf("%.2f",(($total_sp2st_reads/$species{2}{root_read})*100)),
-		"\%of all bacterial reads\n" if $verbose;
+	warn "INFO: For '$total_sp2st_reassignments' species with $total_sp2st_reads classified reads, reads were reassigned to respective strains\n" if $verbose;
 }
 
 ##########################################################################
@@ -451,8 +466,8 @@ foreach (@reffiles) {
 ##########################################################################
 #load info for or download reference genomes for all entries with reads assigned
 #write ART input files and all unassigned entries to file
-my $GI = w_file("$outdir/genomeInfo.txt");
-my $AF = w_file("$outdir/abundanceFile.txt");
+#my $GI = w_file("$outdir/genomeInfo.txt");
+#my $AF = w_file("$outdir/abundanceFile.txt");
 my $IF = w_file("$outdir/fullprofile.tsv");
 my $UA = w_file("$outdir/norefgenome.tsv");
 
@@ -463,8 +478,8 @@ foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
 	check_refgenomes($species{$taxid});
 }
 close $UA;
-close $AF;
-close $GI;
+#close $AF;
+#close $GI;
 close $IF;
 
 #write out all counts for all taxid's with assigned/reassigned refgenomes which will be replaced
@@ -479,20 +494,27 @@ close $TWR;
 #print final statistics
 my $STATS=w_file("$outdir/../stats.log");
 print $STATS "Total reads:\n";
-print $STATS "-number of all reads:\t",($species{0}{root_read} + $species{1}{root_read}),"\n";
-print $STATS "-bacterial fraction:\t$species{2}{root_read}/",($species{0}{root_read} + $species{1}{root_read})," (",
-	sprintf("%.2f",(($species{2}{root_read}/($species{0}{root_read} + $species{1}{root_read}))*100)),"\%)\n";
-print $STATS "Bacterial reads:\n";
+print $STATS "-all reads:\t",($domains{0}{root_read} + $domains{1}{root_read}),"\n";
+print $STATS "-classified reads:\t$domains{1}{root_read} (",
+	sprintf("%.2f",(($domains{1}{root_read}/($domains{0}{root_read} + $domains{1}{root_read}))*100)),"\%)\n";
+for my $domain (sort {$a <=> $b} keys %domains) {
+	next if $domain < 2;
+	print $STATS "-$domains{$domain}{name}:\t$domains{$domain}{root_read}/",($domains{0}{root_read} + $domains{1}{root_read})," (",
+		sprintf("%.2f",(($domains{$domain}{root_read}/($domains{0}{root_read} + $domains{1}{root_read}))*100)),"\%)\n";
+}
+
+
+print $STATS "Classified reads:\n";
 print $STATS "-number of reference genomes:\t$genome_count\n";
-print $STATS "-assigned to reference genome:\t$total_reads/$species{2}{root_read} (",sprintf("%.2f",(($total_reads/$species{2}{root_read})*100)),"\%)\n";
-print $STATS "-assigned above species level:\t$total_reads_nonspecieslvl/$species{2}{root_read} (",
-	sprintf("%.2f",(($total_reads_nonspecieslvl/$species{2}{root_read})*100)),"\%)\n" if ($total_reads_nonspecieslvl);
-print $STATS "-without reference genome:\t$total_ua_reads/$species{2}{root_read} (",
-	sprintf("%.2f",(($total_ua_reads/$species{2}{root_read})*100)),"\%)\n" if ($total_ua_reads);
-if ((defined $total_ua_reads && defined $total_reads_nonspecieslvl ) && ($total_reads + $total_ua_reads + $total_reads_nonspecieslvl) != $species{2}{root_read}) {
-	my $total_lost =  $species{2}{root_read} - $total_reads - $total_ua_reads - $total_reads_nonspecieslvl;
-	print $STATS "-unaccounted sequences due to multimapping\t$total_lost/$species{2}{root_read} (", 
-		sprintf("%.2f",(($total_lost/$species{2}{root_read})*100)),"\%)\n";
+print $STATS "-assigned to reference genome:\t$total_reads/$domains{1}{root_read} (",sprintf("%.2f",(($total_reads/$domains{1}{root_read})*100)),"\%)\n";
+print $STATS "-assigned above species level:\t$total_reads_nonspecieslvl/$domains{1}{root_read} (",
+	sprintf("%.2f",(($total_reads_nonspecieslvl/$domains{1}{root_read})*100)),"\%)\n" if ($total_reads_nonspecieslvl);
+print $STATS "-without reference genome:\t$total_ua_reads/$domains{1}{root_read} (",
+	sprintf("%.2f",(($total_ua_reads/$domains{1}{root_read})*100)),"\%)\n" if ($total_ua_reads);
+if ((defined $total_ua_reads && defined $total_reads_nonspecieslvl ) && ($total_reads + $total_ua_reads + $total_reads_nonspecieslvl) != $domains{1}{root_read}) {
+	my $total_lost =  $domains{1}{root_read} - $total_reads - $total_ua_reads - $total_reads_nonspecieslvl;
+	print $STATS "-unaccounted sequences due to multimapping\t$total_lost/$domains{1}{root_read} (", 
+		sprintf("%.2f",(($total_lost/$domains{1}{root_read})*100)),"\%)\n";
 }
 close $STATS;
 
@@ -528,8 +550,8 @@ sub check_refgenomes {
 			my $base = basename("$genomes{$sp_taxid}{ftp}");
 			$genome_count++;
 			
-			print $AF "${base}_genomic.fna\t$hspecies->{root_ass}\n";
-			print $GI "${base}_genomic.fna\t$refgenomes{$sp_taxid}{genomelength}\t1\n";
+			#print $AF "${base}_genomic.fna\t$hspecies->{root_ass}\n";
+			#print $GI "${base}_genomic.fna\t$refgenomes{$sp_taxid}{genomelength}\t1\n";
 			print $IF "$hspecies->{root_ass}\t$sp_taxid\t$genomes{$sp_taxid}{organism}\t${base}_genomic.fna.gz\t$refgenomes{$sp_taxid}{genomelength}\n";
 		}
 	}
@@ -754,6 +776,18 @@ sub get_refgenome {
 sub assign_species {
 	my ($taxid,$r_read,$r_ass,$level,$linenr,$name) = @_;
 	$species{$taxid} = { 
+		root_read => $r_read,
+		root_ass => $r_ass,
+		level => $level,
+		line => $linenr,
+		name => $name,
+		taxid => $taxid
+	};
+}
+##########################################################################
+sub assign_domain {
+	my ($taxid,$r_read,$r_ass,$level,$linenr,$name) = @_;
+	$domains{$taxid} = { 
 		root_read => $r_read,
 		root_ass => $r_ass,
 		level => $level,
