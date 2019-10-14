@@ -40,7 +40,7 @@ my $ncbi_as_uri = "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_re
 #config		refseq dir
 my ($readsf,$readsr,$readsu,$cent_krep,$cent_tab) = (undef,undef,undef,undef,undef);
 my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,$qprof1,$qprof2,
-	$length,$verbose,$outdir,$install_deps,$install_test,$download_refseq,$domains,$keep);
+	$length,$verbose,$outdir,$install_deps,$install_test,$install_test_debug,$download_refseq,$domains,$keep);
 
 #defaults
 my $threads = 1;
@@ -74,6 +74,7 @@ GetOptions(	"outdir=s" => \$outdir,
 			
 			"install-deps" => \$install_deps,
 			"install-test" => \$install_test,
+			"install-test-debug" => \$install_test_debug,
 			"ncbi-sum-update" => \$update_as,
 			"get-refseq-genomes" => \$download_refseq,
 			"verbose" => \$verbose,
@@ -96,6 +97,18 @@ if ($install_test) {
 #sanity checks
 
 ########################
+### outdir ###
+
+if (defined $outdir && -d $outdir) {
+	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
+	#give 10 secs to kill command if wrong dir is provided
+	sleep 10;
+} else {
+	die "No output directory given\n" unless $outdir;
+	mkd("$outdir");
+}
+
+########################
 ### assembly summary table ###
 
 if (! defined $assembly_summary) {
@@ -114,18 +127,6 @@ if (! defined $assembly_summary) {
 	}
 } else {
 	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
-}
-
-########################
-### outdir ###
-
-if (defined $outdir && -d $outdir) {
-	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
-	#give 10 secs to kill command if wrong dir is provided
-	sleep 10;
-} else {
-	die "No output directory given\n" unless $outdir;
-	mkd("$outdir");
 }
 
 ########################
@@ -166,7 +167,7 @@ if ( -x "${wd}/centrifuge/bin/centrifuge" && -x "${wd}/centrifuge/bin/centrifuge
 		or die "'centrifuge' is not installed, please run $0 --install-deps\n";
 	$kreport_path = can_run('centrifuge-kreport') 
 		or die "'centrifuge-kreport' is not installed, please run $0 --install-deps\n";
-		p_lock(1,1,"$outdir/tamock.log",
+		p_lock(1,$verbose,"$outdir/tamock.log",
 		"Using system-wide installation of centrifuge '$centrifuge_path'");
 }
 
@@ -179,11 +180,11 @@ if ( -x "${wd}/art/bin/art_illumina" && -x "${wd}/art/bin/art_profiler_illumina"
 } else {
 	$art_path = can_run('art_illumina') 
 		or die "'art_illumina' is not installed, please run $0 --install-deps\n";
-		p_lock(1,1,"$outdir/tamock.log",
+		p_lock(1,$verbose,"$outdir/tamock.log",
 		"Using system-wide installation of art_illumina '$art_path'");	
 	$artprofiler_path = can_run('art_profiler_illumina') 
 		or die "'art_profiler_illumina' is not installed, please run $0 --install-deps\n";
-		p_lock(1,1,"$outdir/tamock.log",
+		p_lock(1,$verbose,"$outdir/tamock.log",
 		"Using system-wide installation of art_profiler_illumina '$artprofiler_path'");	
 }
 
@@ -319,7 +320,7 @@ if (! (defined $cent_krep && defined $cent_tab)) {
 	}
 	$cent_cmd = "$cent_cmd -S $outdir/classification_out/centrifuge.out --report-file $outdir/classification_out/centrifuge.report";
 	
-	p_lock(0,$verbose,"$outdir/tamock.log",
+	p_lock(0,1,"$outdir/tamock.log",
 		"#################################################\nClassifying sequences...\n");
 		
 	mkd("$outdir/classification_out");
@@ -383,8 +384,7 @@ if ("$illumina_model" eq "custom") {
 #create benchmark profile
 
 p_lock(0,1,"$outdir/tamock.log",
-	"\n#################################################\nCreating benchmark sequences...\n");
-
+	"########################\nCreating benchmark sequences...\n");
 my $profile_cmd = "${wd}/scripts/benchmark_profile_kreport.pl -a $assembly_summary";
 if ($cent_krep) {
 	$profile_cmd .= " -k $cent_krep";
@@ -398,7 +398,7 @@ if ($domains) {
 	$profile_cmd .= " -d $domains";
 }
 
-print("INFO: Downloading required genomes from RefSeq might take multiple hours...\n\n");
+print("INFO: Downloading required genomes from RefSeq might take multiple hours...\n");
 runcmd("$profile_cmd",$verbose);
 
 ########################
@@ -426,8 +426,9 @@ if ("$illumina_model" eq "custom") {
 	$benchmark_cmd.= " -M $illumina_model";
 }
 
-$benchmark_cmd.= " --gzip" if $modegz;
-$benchmark_cmd.= " --single-end" if $semode;
+$benchmark_cmd .= " --gzip" if $modegz;
+$benchmark_cmd .= " --single-end" if $semode;
+$benchmark_cmd .= " --debug" if $install_test_debug;
 runcmd("$benchmark_cmd",$verbose);
 
 #remove ART input files which are not needed anymore
@@ -649,8 +650,9 @@ sub test_installation
 		rmrf("${wd}/testdata/testout");
 	}
 	
+	
 	my $tamock_cmd = "${wd}/tamock -1 ${wd}/testdata/test_1.fq -2 ${wd}/testdata/test_2.fq";
-	$tamock_cmd .= " -x ${wd}/testdata/sa_ec -R ${wd}/testdata/refgenomes -o ${wd}/testdata/testout --debug";
+	$tamock_cmd .= " -x ${wd}/testdata/sa_ec -R ${wd}/testdata/refgenomes -o ${wd}/testdata/testout --install-test-debug";
 	
 	my( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => "$tamock_cmd", verbose => 1 );
@@ -673,7 +675,7 @@ sub test_installation
 	close $RS2;
 	
 	if ("$Config{osname}" eq "linux") {
-		if ("$rs1_md5" eq "7d507359c73f917ffbda3d8ca3456eff" && "$rs2_md5" eq "7fc59b75044391f006c2fb869c1d5331") {
+		if ("$rs1_md5" eq "5d5b4ed75498cb661ebac10d6ee1ff17" && "$rs2_md5" eq "8711541cd59152efdabb7c6b2bc6d32b") {
 			print "#################################################\n","Test successfull, everything is installed correctly\n";
 		} else {
 			print "#################################################\n","Test failed!\n",
@@ -772,9 +774,9 @@ sub runcmd
 	} else {
 		#print command to screen if non-verbous, if verbose it's already printed by run()
 		if ($verbose) {
-			p_lock(0,0,"$outdir/tamock.log","Running [${cmd}]...\n");
-		} else {
 			p_lock(0,1,"$outdir/tamock.log","Running [${cmd}]...\n");
+		} else {
+			p_lock(0,0,"$outdir/tamock.log","Running [${cmd}]...\n");
 		}
 		p_lock(1,0,"$outdir/warnings.log","Running [${cmd}]...\n");
 	}	

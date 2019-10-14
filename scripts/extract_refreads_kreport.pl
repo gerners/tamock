@@ -74,7 +74,7 @@ close $CT;
 #all sequences with unique matches are definitely replaced by simulated reads, the more taxa they matched, the more likely their LCA is above species level
 #=> not simulated, therefore should stay in sample. Approximation to avoid repeated LCA calculation which is internal to centrifuge/kraken and would need
 #to be reproduced separately for each program
-my @readids = sort { $bacreads{$a} <=> $bacreads{$b} } keys(%bacreads);
+my @readids = sort { $bacreads{$a} <=> $bacreads{$b} } sort keys(%bacreads);
 @readids = sort @readids;
 
 #only keep the same number of readIDs than simulated and omit remaining ones
