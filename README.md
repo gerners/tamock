@@ -50,7 +50,7 @@ MacOS
  git clone https://github.com/gerners/tamock.git
  cd tamock
  
- #if ART and Centrifuge are available on the system, this step is not needed
+ #if ART (version 20160605) and Centrifuge (>= v1.0.4) are available on the system, this step is not needed
  tamock --install-deps
  
  tamock --install-test
@@ -68,8 +68,8 @@ Example:
  wget ftp://ftp.ccb.jhu.edu/pub/infphilo/centrifuge/data/p+h+v.tar.gz
  tar -xzf p+h+v.tar.gz
 
- #if there is already a present centrifuge installation with indexes, the index folder can also be linked like
- ln -s /path/to/centrifuge-indexes /<tamock_install_dir>/centrifuge-index
+ #if there is already a present centrifuge installation with indexes, the index folder can also be linked as follows to be used by default
+ ln -s /path/to/centrifuge-index /<tamock_install_dir>/centrifuge-index
 ```
 
 If a centrifuge p+h+v index is placed at the install directory under
@@ -77,18 +77,14 @@ If a centrifuge p+h+v index is placed at the install directory under
 this index is used by default if no other index is provided to tamock.
 
 RefSeq reference genomes are all saved within one directory. If the directory /<tamock_install_dir>/refseq-genomes is created, this directory is used by default unless another directory is provided via the command line.
+CAVEAT: If Eukaryotic genomes are simulated, downloaded genomes could potentially use >100 GB of file space 
 
 ```bash
  #optional
  mkdir /<tamock_install_dir>/refseq-genomes
 ```
 
-To speed up analysis, all RefSeq genomes can be downloaded before benchmark creation (>100 GB) instead of only downloading required genomes during a single run.
-
-```bash
- #optional
- tamock --download-refseq -R /path/to/refseq-genomes
-```
+If a local copy of all RefSeq genomes is present on the system, softlinks to all genome files (e.g. GCF_000013425.1_ASM1342v1_genomic.fna.gz) can be placed in /<tamock_install_dir>/refseq-genomes to use the local mirror of RefSeq.
 
 ## Quick start
 
@@ -178,10 +174,6 @@ Defaults to /installdir/assembly_summary.txt (downloaded during installation).
 
 Update NCBI assembly summary to current version and replace old version at /installdir/assembly_summary_refseq.txt
 Alternatively manually download from ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_refseq.txt and provide via -a
-
-* --get-refseq-genomes
-
-Download all reference genomes from provided assembly-summary table. Requires option -R (directory to safe reference genomes)
 
 * -t/--threads
 

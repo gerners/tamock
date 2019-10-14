@@ -40,7 +40,7 @@ my $ncbi_as_uri = "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_re
 #config		refseq dir
 my ($readsf,$readsr,$readsu,$cent_krep,$cent_tab) = (undef,undef,undef,undef,undef);
 my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,$qprof1,$qprof2,
-	$length,$verbose,$outdir,$install_deps,$install_test,$install_test_debug,$download_refseq,$domains,$keep);
+	$length,$verbose,$outdir,$install_deps,$install_test,$install_test_debug,$domains,$keep);
 
 #defaults
 my $threads = 1;
@@ -76,17 +76,12 @@ GetOptions(	"outdir=s" => \$outdir,
 			"install-test" => \$install_test,
 			"install-test-debug" => \$install_test_debug,
 			"ncbi-sum-update" => \$update_as,
-			"get-refseq-genomes" => \$download_refseq,
 			"verbose" => \$verbose,
 			
 			"help" => \&print_help);
 
 if ($install_deps) {
 	install_dependencies();
-}
-
-if ($download_refseq) {
-	download_refgenomes();
 }
 
 if ($install_test) {
@@ -697,63 +692,6 @@ sub test_installation
 	exit;
 }
 ##########################################################################
-sub download_refgenomes
-{
-	
-	#check assembly summary
-	if (! defined $assembly_summary) {
-		if (-r "${wd}/assembly_summary.txt" && ! $update_as) {
-			$assembly_summary = "${wd}/assembly_summary.txt";
-		} else {
-			p_lock(0,1,"$outdir/tamock.log",
-				"Downloading '$ncbi_as_uri' to current directory ...\n");
-			$assembly_summary = fetchfile("$ncbi_as_uri");
-		}
-	} else {
-		die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
-	}
-	
-	#check refseq folder
-	if (! $refseq_folder) {
-		if (-d "${wd}/refseq-genomes") {
-			$refseq_folder = "${wd}/refseq-genomes";
-		} else {
-			die "No directory for reference genomes given, please specify directory with -R\n";
-		}
-	} else {
-		#test if writeable
-		my $touch = w_file("$refseq_folder/write_test_refseq");
-		close $touch;
-		rmrf("$refseq_folder/write_test_refseq");
-	}
-	
-	print "Downloading all RefSeq Genomes to ${refseq_folder}...\n";
-	
-	my $AS = r_file("$assembly_summary");
-	my $count;
-	while (my $line = <$AS>) {
-		next if ($line =~/^#/ );
-		$count++;
-	}
-	my $nrline = $count;
-	
-	$count = 0;
-	$AS = r_file("$assembly_summary");
-	while (my $line = <$AS>) {
-		next if ($line =~/^#/ );
-		$count++;
-		my $ftp = (split("\t",$line))[19];
-		my $base = basename("$ftp");
-		my $file = "${base}_genomic.fna.gz";
-		
-		if (! -r "${refseq_folder}/${file}") {
-			fetchfile("${ftp}/${file}","$refseq_folder");
-			print "[$count/$nrline] Downloaded '$file'\n";
-		}
-	}
-	exit;
-}
-##########################################################################
 sub fetchfile
 {
 	my ($uri,$targetdir) = @_;
@@ -974,7 +912,6 @@ Usage: $0 [Parameters]
 	                   			($wd/assembly_summary_refseq.txt)
 	--ncbi-sum-update		Download current NCBI RefSeq Assembly summary table and exit
 		                   		('$ncbi_as_uri')
-	--get-refseq-genomes		Download all reference genomes.  Requires option -R
 	-t/--threads			Number of threads for centrifuge (1)
 	-v/--verbose			Verbose mode, print detailed information to screen
 	
