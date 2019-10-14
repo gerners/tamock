@@ -129,8 +129,13 @@ while (my $line = <$KR>) {
 	
 	#check if new domain line is reached and not selected in previous check, therefore all entries should be skipped
 	if ($domflag) {
-		$domflag = 0 if ($rank eq "D");
+		if ($rank eq "D") {
+			$domflag = 0;
+			$total_reads_nonspecieslvl += $r_ass if ($r_ass);
+		};
 		warn "INFO: Skipping all entries for '$name'\n" if $verbose > 1;
+	} else {
+		$total_reads_nonspecieslvl += $r_ass if ($r_ass);
 	}
 	next unless ($domflag == 1);
 	
@@ -915,6 +920,9 @@ Usage: $0 [Parameters]
 	
 	-k/--kraken-report		Kraken(style) report 
 	-a/--assembly-summary		NCBI Assembly summary table
+	
+	-d/--domains			Select domains which should be simulated. Options are E(ukaryota), B(acteria), V(iruses), A(rchaea)
+							For multiple selections, provide comma separated values e.g. <-d E,B>. (B)
 	
 	-o/--outdir 			Output directory
 	-R/--refgenomes			Directory to safe reference genomes in gzipped fasta format

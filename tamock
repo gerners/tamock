@@ -40,7 +40,7 @@ my $ncbi_as_uri = "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_re
 #config		refseq dir
 my ($readsf,$readsr,$readsu,$cent_krep,$cent_tab) = (undef,undef,undef,undef,undef);
 my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,$qprof1,$qprof2,
-	$length,$verbose,$outdir,$install_deps,$install_test,$download_refseq,$domains);
+	$length,$verbose,$outdir,$install_deps,$install_test,$download_refseq,$domains,$keep);
 
 #defaults
 my $threads = 1;
@@ -60,6 +60,7 @@ GetOptions(	"outdir=s" => \$outdir,
 			"refgenomes|R=s" => \$refseq_folder,
 			"assembly-summary=s" => \$assembly_summary,
 			"no-reassign" => \$no_strain_ra,
+			"keep" => \$keep,
 			"centrifuge-kreport=s" => \$cent_krep,
 			"centrifuge-out=s" => \$cent_tab,
 			
@@ -150,7 +151,7 @@ if (! $domains) {
 		}
 	}
 }
-
+print "\n";
 
 ########################
 ### dependencies ###
@@ -165,8 +166,8 @@ if ( -x "${wd}/centrifuge/bin/centrifuge" && -x "${wd}/centrifuge/bin/centrifuge
 		or die "'centrifuge' is not installed, please run $0 --install-deps\n";
 	$kreport_path = can_run('centrifuge-kreport') 
 		or die "'centrifuge-kreport' is not installed, please run $0 --install-deps\n";
-		p_lock(1,1,"$outdir/warnings.log",
-		"WARNING: Using centrifuge found at '$centrifuge_path', version might be incompatible, consider running $0 --install-deps");
+		p_lock(1,1,"$outdir/tamock.log",
+		"Using system-wide installation of centrifuge '$centrifuge_path'");
 }
 
 
@@ -178,12 +179,12 @@ if ( -x "${wd}/art/bin/art_illumina" && -x "${wd}/art/bin/art_profiler_illumina"
 } else {
 	$art_path = can_run('art_illumina') 
 		or die "'art_illumina' is not installed, please run $0 --install-deps\n";
-		p_lock(1,1,"$outdir/warnings.log",
-		"WARNING: Using art_illumina found at '$art_path', version might be incompatible, consider running $0 --install-deps");	
+		p_lock(1,1,"$outdir/tamock.log",
+		"Using system-wide installation of art_illumina '$art_path'");	
 	$artprofiler_path = can_run('art_profiler_illumina') 
 		or die "'art_profiler_illumina' is not installed, please run $0 --install-deps\n";
-		p_lock(1,1,"$outdir/warnings.log",
-		"WARNING: Using art_profiler_illumina found at '$artprofiler_path', version might be incompatible, consider running $0 --install-deps");	
+		p_lock(1,1,"$outdir/tamock.log",
+		"Using system-wide installation of art_profiler_illumina '$artprofiler_path'");	
 }
 
 ########################
@@ -207,23 +208,25 @@ if (! $index) {
 	if (-r "${wd}/centrifuge-index/p+h+v.1.cf") {
 		$index = "${wd}/centrifuge-index/p+h+v";
 		p_lock(0,$verbose,"$outdir/tamock.log",
-				"INFO: Using default index 'p+h+v' for classification\n");
+				"Using default index '${wd}/centrifuge-index/p+h+v' for classification\n");
 	} else {
 		die "No index provided or found, please provide centrifuge-index\n";
 	}
 } else {
 	if (! -r "${index}.1.cf" ) {
-		print "INDEX: '$index'\n";
-		die "Provided centrifuge-index '$index' not readable\n";
+		die "ERROR: Provided centrifuge-index '$index' not readable\n";
+	} else {
+		p_lock(0,$verbose,"$outdir/tamock.log",
+				"Using index '${index}' for classification\n");
 	}
 }
 
 #centrifuge-files
 if (defined $cent_krep) {
-	die "'$cent_krep' not readable\n" unless (-r $cent_krep);
+	die "ERROR: '$cent_krep' not readable\n" unless (-r $cent_krep);
 }
 if (defined $cent_tab) {
-	die "'$cent_tab' not readable\n" unless (-r $cent_tab);
+	die "ERROR: '$cent_tab' not readable\n" unless (-r $cent_tab);
 }
 
 ########################
@@ -233,7 +236,7 @@ if (! $refseq_folder) {
 	if (-d "${wd}/refseq-genomes") {
 		$refseq_folder = "${wd}/refseq-genomes";
 	} else {
-		die "No directory for reference genomes given, please specify directory with -R\n";
+		die "ERROR: No directory for reference genomes given, please specify directory with -R\n";
 	}
 } else {
 	#test if writeable
@@ -266,6 +269,10 @@ if (! defined $length) {
 	}
 	close $IN;
 }
+#if a custom error profile is provided, mode is custom
+if (defined $qprof1) {
+	$illumina_model = "custom";
+}
 
 #positive values for min species abundance, read length, mean fragment lenght, sd fragment length, threads
 my %inttest = (
@@ -276,7 +283,7 @@ my %inttest = (
 	);
 for my $para (keys %inttest) {
 	if (! $inttest{$para} =~ /^[1-9]+[0-9]*$/) {
-		die "Value '$inttest{$para}' for parameter '$para' is not a positive integer greater than 0\n";
+		die "ERROR: Value '$inttest{$para}' for parameter '$para' is not a positive integer greater than 0\n";
 	}
 }
 
@@ -286,15 +293,15 @@ my $flag;
 foreach my $artmodel (@art_models) {
 	$flag++ if( $artmodel eq $illumina_model)
 }
-die "'$illumina_model' is not a valid model for ART. ",
-"Please see documentation at https://github.com/gerners/tamock or art_illumina -h for valid options\n" unless $flag;
+die "ERROR: '$illumina_model' is not a valid model for ART. ",
+"Please check documentation at https://github.com/gerners/tamock or '$art_path -h' for valid options\n" unless $flag;
 
 #custom models
 if (defined $qprof1) {
-	die "Can't read ART quality profile '$qprof1'\n" unless (-r $qprof1);
+	die "ERROR: Can't read ART quality profile '$qprof1'\n" unless (-r $qprof1);
 }
 if (defined $qprof2) {
-	die "Can't read ART quality profile '$qprof2'\n" unless (-r $qprof2);
+	die "ERROR: Can't read ART quality profile '$qprof2'\n" unless (-r $qprof2);
 }
 
 ##########################################################################
@@ -313,7 +320,7 @@ if (! (defined $cent_krep && defined $cent_tab)) {
 	$cent_cmd = "$cent_cmd -S $outdir/classification_out/centrifuge.out --report-file $outdir/classification_out/centrifuge.report";
 	
 	p_lock(0,$verbose,"$outdir/tamock.log",
-		"#################################################\nClassifying sequences...");
+		"#################################################\nClassifying sequences...\n");
 		
 	mkd("$outdir/classification_out");
 	runcmd("$cent_cmd",$verbose);
@@ -321,7 +328,7 @@ if (! (defined $cent_krep && defined $cent_tab)) {
 }
 
 my $msg = "Finished classification with runtime " . runtime(tv_interval($t1)) ;
-p_lock(0,1,"$outdir/tamock.log", "$msg");
+p_lock(0,1,"$outdir/tamock.log", "$msg\n");
 
 ##########################################################################
 #create benchmarks
@@ -334,7 +341,7 @@ my $t2 = [gettimeofday];
 if ("$illumina_model" eq "custom") {
 	
 	p_lock(0,1,"$outdir/tamock.log",
-	"#################################################\nDetermining sequence quality profile(s)...");
+	"#################################################\nDetermining sequence quality profile(s)...\n");
 	
 	#link input filenames with specific names to ensure proper filenames for art_profiler
 	mkd("$outdir/tmpreads/art_profile");
@@ -376,7 +383,7 @@ if ("$illumina_model" eq "custom") {
 #create benchmark profile
 
 p_lock(0,1,"$outdir/tamock.log",
-	"#################################################\nCreating benchmark sequences...");
+	"\n#################################################\nCreating benchmark sequences...\n");
 
 my $profile_cmd = "${wd}/scripts/benchmark_profile_kreport.pl -a $assembly_summary";
 if ($cent_krep) {
@@ -387,8 +394,11 @@ if ($cent_krep) {
 
 $profile_cmd = "$profile_cmd -r $refseq_folder -o $outdir/classification_out/ -v";
 $profile_cmd .= " --no-reassign" if $no_strain_ra;
+if ($domains) {
+	$profile_cmd .= " -d $domains";
+}
 
-print("\nINFO: Downloading genomes from RefSeq might take up to multiple hours...\n\n");
+print("INFO: Downloading required genomes from RefSeq might take multiple hours...\n\n");
 runcmd("$profile_cmd",$verbose);
 
 ########################
@@ -531,7 +541,13 @@ if ($semode) {
 		copy("$file_from","$file_to") or die "Copy '$file_from' to '$file_to' failed: $!";
 	}
 }
-p_lock(0,1,"$outdir/tamock.log", "\n>>> Summary <<<");
+
+#remove temporary ART and sequence files unless keep flag is set
+if (! $keep) {
+	rmrf("$outdir/tmpreads")
+}
+
+p_lock(0,1,"$outdir/tamock.log", "\n#################################################\nSummary\n");
 my $STATS = r_file("$outdir/stats.log");
 while (my $line = <$STATS>) {
 	chomp $line;
@@ -756,15 +772,19 @@ sub runcmd
 	} else {
 		#print command to screen if non-verbous, if verbose it's already printed by run()
 		if ($verbose) {
-			p_lock(0,0,"$outdir/tamock.log","Running [${cmd}]...");
+			p_lock(0,0,"$outdir/tamock.log","Running [${cmd}]...\n");
 		} else {
-			p_lock(0,1,"$outdir/tamock.log","Running [${cmd}]...");
+			p_lock(0,1,"$outdir/tamock.log","Running [${cmd}]...\n");
 		}
-		p_lock(1,0,"$outdir/warnings.log","Running [${cmd}]...");
+		p_lock(1,0,"$outdir/warnings.log","Running [${cmd}]...\n");
 	}	
 	
 	my( $success, $error_message, $full_buf, $stdout_buf, $stderr_buf ) =
             run( command => "$cmd", verbose => $verbose );
+    #print newline after run() for better readability of progress in case of verbose, else p_lock adds the newline
+    if ($verbose) {
+    	print "\n";
+    }
     
     if (! $install_deps) {
     	p_lock(0,0,"$outdir/tamock.log","@$stdout_buf");
@@ -929,58 +949,59 @@ Usage: $0 [Parameters]
 	Default values in brackets
 	
 	==== Mandatory ====
-	
 	-1/--forward			Forward paired reads, optionally together with -U
 	-2/--reverse			Reverse paired reads, optionally together with -U 
 	-U/--unpaired			Unpaired/single end reads, mandatory if no paired reads
-	
 	-o/--outdir      		Output directory
-	
 	-R/--refgenomes			Directory to safe reference genomes in gzipped fasta format
-							(if present, defaults to: $wd/refseq-genomes)
+						(if present, defaults to: $wd/refseq-genomes)
 	-x/--index   			Centrifuge index (if present, defaults to: $wd/centrifuge-index/p+h+v)
 	
 	
 	
 	==== Optional ====
 	
-	-d/--domains			Select domains which should be simulated. Options are E(ukaryota), B(acteria), V(iruses), A(rchaea)
-							For multiple selections, provide comma separated values e.g. <-d E,B>. (B)
-	
+	-d/--domains			Select domains which should be simulated [EBVA]
+					Options are E(ukaryota), B(acteria), V(iruses), A(rchaea)
+					For multiple selections, provide comma separated values e.g. <-d E,B>. (B)
+					
 	--gzip    	        	Gzip all output sequence files (off)
-	
+	-k/--keep			Keep all intermediate ART and sequence files
+						Temporary files are stored in <output_dir/tmpreads>	
 	-a/--assembly-summary		NCBI RefSeq Assembly summary table to select reference genomes 
 	                   			($wd/assembly_summary_refseq.txt)
-	--ncbi-sum-update		Download current NCBI RefSeq Assembly summary table into install directory and exit
-		                   		(downloads current '$ncbi_as_uri')
-	--get-refseq-genomes	Download all reference genomes from provided assembly-summary table. Requires option -R
+	--ncbi-sum-update		Download current NCBI RefSeq Assembly summary table and exit
+		                   		('$ncbi_as_uri')
+	--get-refseq-genomes		Download all reference genomes.  Requires option -R
 	-t/--threads			Number of threads for centrifuge (1)
 	-v/--verbose			Verbose mode, print detailed information to screen
 	
 	
 	== Benchmarks ==
 	
-	--centrifuge-kreport		Centrifuge kreport, skips centrifuge classification if provided
-	--centrifuge-out    		Centrifuge tabbed output (-S <cent-out>), skips centrifuge classification if provided
+	--centrifuge-kreport		Pre-calculated Centrifuge kreport
+	--centrifuge-out    		Pre-calculated Centrifuge tabbed output (-S <cent-out> centrifuge option)
 
 	--no-reassign			No reassignment of read counts from strains without a reference to other 
 	               				classified strains/reference genomes of same species (off)
 	
 	== ART sequence simulator ==
 	
-	-M/--illumina-model		Illumima error profile for ART. Either precalculated ART profile e.g. <HS25>, see 'art_illumina -h'
+	-M/--illumina-model		Illumima error profile for ART. Either precalculated ART profile
 	                        		or calculated from input sequences with option <custom> (custom)
-	-l/--length	    		Read length of simulated reads (125)
-	--mean-fragement-length		Mean size of fragments for paired-end simulations (200)
+	                        		For available pre-calculated profiles see 'art_illumina -h'
+	-l/--length	    		Read length of simulated reads 
+						(defaults to longest read length in first 250 reads of input file)
+	--mean-fragment-length		Mean size of fragments for paired-end simulations (200)
 	--sd-fragment-length		Standard deviation of fragment size for paired-end simulations (10)
-	--qprof1  	        	Precalculated forward-read quality profile for custom error profile in ART, together with -M custom
-	--qprof2  	        	Precalculated reverse-read quality profile for custom error profile in ART, together with -M custom
+	--qprof1  	        	Precalculated forward-read quality profile for custom error profile in ART
+	--qprof2  	        	Precalculated reverse-read quality profile for custom error profile in ART
 	
 	
 	== Dependencies ==
 	
 	--install-deps			Install centrifuge and ART default versions (depends on libgsl)
-	--install-test			Test if installation was successfull
+	--install-test			Test installation
 	
 	
 	

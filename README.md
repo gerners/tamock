@@ -6,13 +6,12 @@ Tamock simulates habitat-specific benchmark data for metagenomic samples.
 Simulated metagenomic reads are widely used to benchmark software and workflows for metagenome interpretation. 
 Scope and power of metagenomic benchmarks depend on the selection of their underlying communities. As a result, 
 conclusions of benchmark studies are limited for distant communities towards the benchmark data used. Ideally,  
-simulations are therefore based on genomes, which resemble microbial communities realistically. 
+simulations are therefore based on genomes, which resemble metagenomic communities realistically. 
 
 Tamock facilitates the simulation of metagenomic reads according to a microbial community, derived from real 
 metagenomic data. Thus, Tamock simulations enable an assessment of computational methods, workflows and parameters 
 specific for a microbial habitat. Tamock automatically determines taxonomic profiles from shotgun metagenomic data, 
-selects reference genomes accordingly and uses them to simulate metagenomic reads. Tamock is a user-friendly 
-command-line application, providing extensive supplementary information along with the simulation. 
+selects reference genomes accordingly and uses them to simulate metagenomic reads. 
 
 By default, the bacterial fraction of a community is simulated, however other domains such as Eukaryota, Archaea or Viruses
 can be simulated as well (-d/--domains option).
@@ -45,13 +44,25 @@ MacOS
  brew install gsl
 ```
 
+### Install
+
+```bash
+ git clone https://github.com/gerners/tamock.git
+ cd tamock
+ 
+ #if ART and Centrifuge are available on the system, this step is not needed
+ tamock --install-deps
+ 
+ tamock --install-test
+```
+
 Centrifuge indexes have to be downloaded separately.
 Prebuild indexes are provided on the centrifuge homepage at http://www.ccb.jhu.edu/software/centrifuge/
 
 Example:
 
 ```bash
- #for details on provided indexes, please see documentation at the centrifuge homepage
+ #for details on provided indexes, please see documentation at the centrifuge homepage (link above)
  mkdir /<tamock_install_dir>/centrifuge-index
  cd /<tamock_install_dir>/centrifuge-index
  wget ftp://ftp.ccb.jhu.edu/pub/infphilo/centrifuge/data/p+h+v.tar.gz
@@ -65,27 +76,18 @@ If a centrifuge p+h+v index is placed at the install directory under
 <install_dir/centrifuge-index/p+h+v*>
 this index is used by default if no other index is provided to tamock.
 
-RefSeq reference genomes are all saved within one directory. If the directory /<tamock_install_dir>/refseq-genomes is created, this directory is used by default unless another directory has to be provided via the command line.
+RefSeq reference genomes are all saved within one directory. If the directory /<tamock_install_dir>/refseq-genomes is created, this directory is used by default unless another directory is provided via the command line.
 
 ```bash
  #optional
  mkdir /<tamock_install_dir>/refseq-genomes
 ```
 
-To speed up analysis, all bacterial RefSeq genomes can be downloaded before mock community creation (>100 GB) instead of only downloading required genomes during a single run.
+To speed up analysis, all RefSeq genomes can be downloaded before benchmark creation (>100 GB) instead of only downloading required genomes during a single run.
 
 ```bash
  #optional
  tamock --download-refseq -R /path/to/refseq-genomes
-```
-
-### Install
-
-```bash
- git clone https://github.com/gerners/tamock.git
- cd tamock
- tamock --install-deps
- tamock --install-test
 ```
 
 ## Quick start
@@ -143,7 +145,14 @@ Output directory
 
 * -R/--refgenomes
 	
-Directory to store all RefSeq reference genomes.
+Directory to store all RefSeq reference genomes. Defaults to <install_dir/refseq-genomes> if present
+
+* -x/--index
+
+Centrifuge index (*.cf files). Only basename needed, e.g. /path/to/index.X.cf should be provided as '-x /path/to/index'.  
+Defaults to <installdir/centrifuge-index/p+h+v> if present and no other option given
+
+Index files can be downloaded from the centrifuge homepage at http://www.ccb.jhu.edu/software/centrifuge/
 
 #### Optional
 
@@ -156,12 +165,9 @@ For multiple selections, provide comma separated values e.g. <-d E,B>. Defaults 
 
 Gzip all sequence files
 
-* -x/--index
-
-Centrifuge index (*.cf files). Only basename needed, e.g. /path/to/index.X.cf should be provided as '-x /path/to/index'.  
-Default: p+h+v if files present at /installdir/centrifuge-index/p+h+v.X.cf
-
-Index files can be downloaded from the centrifuge homepage at http://www.ccb.jhu.edu/software/centrifuge/
+* -k/--keep
+Keep all intermediate ART and sequence files (sequence fraction with (*repl_by_sim*)/without (*not_repl*) reference genomes, 
+simulated sequences (simulated*.fq)). Temporary files are stored in <output_dir/tmpreads>	
 
 * -a/--assembly-summary
 
@@ -187,14 +193,6 @@ Verbose mode, print detailed information to screen
 
 ==== Benchmarks ====
 
-* --centrifuge-out
-
-Centrifuge tabbed output file (centrifuge -S <file>). If centrifuge-kreport and centrifuge output files are provided, classification is skipped and these files are used instead. 
-CAVEAT: The same index used for classification has to be provided to tamock as well via -x/--index.
-
-Centrifuge example command:
-centrifuge -x index -1 forwardpairs.fq -2 reversepairs.fq --out-fmt tab -S centrifuge.out --report-file centrifuge.report
-
 * --centrifuge-kreport
 
 Centrifuge kraken-like report. If centrifuge-kreport and centrifuge output files are provided, classification is skipped and these files are used instead. 
@@ -204,11 +202,18 @@ CAVEAT: Centrifuge version 1.0.4. or higher required
 Centrifuge example command:
 centrifuge-kreport -x index centrifuge.out > centrifuge.kreport
 
+* --centrifuge-out
+
+Centrifuge tabbed output file (centrifuge -S <file>). If centrifuge-kreport and centrifuge output files are provided, classification is skipped and these files are used instead. 
+CAVEAT: The same index used for classification has to be provided to tamock as well via -x/--index.
+
+Centrifuge example command:
+centrifuge -x index -1 forwardpairs.fq -2 reversepairs.fq --out-fmt tab -S centrifuge.out --report-file centrifuge.report
+
 * --no-reassign
 
 No reassignment of read counts from strains without a reference genome to other classified strains/reference genomes of same species.
-Classifications to strains with no reference genome might occur from non-matching strain IDs from the centrifuge index to the current
-NCBI RefSeq collection. Default off.
+Only simulate sequences classified directly to a reference. Default off.
 
 ==== ART sequence simulator ====
 
@@ -220,23 +225,24 @@ HS10 - HiSeq 1000 (100bp),			HS20 - HiSeq 2000 (100bp),			HS25 - HiSeq 2500 (125
 HSXn - HiSeqX PCR free (150bp),		HSXt - HiSeqX TruSeq (150bp),		MinS - MiniSeq TruSeq (50bp),
 MSv1 - MiSeq v1 (250bp),			MSv3 - MiSeq v3 (250bp),			NS50 - NextSeq500 v2 (75bp)
 
-Defaults to sample specific error profile determination (custom).
+Defaults to sample specific error profile, calculated on-the-fly (custom).
 
 * --qprof1
 
-Precalculated forward-read quality profile for custom error profile in ART, together with -M custom. Replaces calculation of error profiles of input sequences.
+Pre-calculated forward-read quality profile for custom error profile in ART. Replaces calculation of error profiles of input sequences.
 
 * --qprof2
 
-Precalculated reverse-read quality profile for custom error profile in ART, together with -M custom. Replaces calculation of error profiles of input sequences.
+Pre-calculated reverse-read quality profile for custom error profile in ART. Replaces calculation of error profiles of input sequences.
 
 * -l/--length
 
-Read length of simulated reads. Should be matched with a realistic error profile with according read lengths (-M). If not provided, determined from first 1000 reads of input sequences.
+Read length of simulated reads. Should be matched with a realistic error profile with according read lengths (-M). 
+If not provided, the longest read length from the first 250 reads of input sequences are used.
 
 * --mean-fragment-length
 
-Mean size of frament length for paired-end simulations by ART. Defaults to 200.
+Mean size of fragment length for paired-end simulations by ART. Defaults to 200.
 
 * --sd-fragment-length
 
@@ -250,4 +256,4 @@ Install centrifuge and ART default versions into the installation directory of t
 
 * --install-test
 
-Test if installation was successfull.
+Test installation.
