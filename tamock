@@ -574,7 +574,7 @@ sub install_dependencies
 	print "Downloading Centrifuge...\n";
 	
 	#caveat, fetch fails with no error if https is used, just retype to http
-	my $cf_arch = fetchfile('https://github.com/DaehwanKimLab/centrifuge/archive/6cc874e890249f6d8b479bd41b41e131f12c6796.zip',"$wd");
+	my $cf_arch = fetchfile('http://github.com/DaehwanKimLab/centrifuge/archive/6cc874e890249f6d8b479bd41b41e131f12c6796.zip',"$wd");
 	runcmd("$unzip_path $cf_arch",0);
 	
 	print "Building Centrifuge...\n";
