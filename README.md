@@ -77,7 +77,8 @@ If a centrifuge p+h+v index is placed at the install directory under
 this index is used by default if no other index is provided to tamock.
 
 RefSeq reference genomes are all saved within one directory. If the directory /<tamock_install_dir>/refseq-genomes is created, this directory is used by default unless another directory is provided via the command line.
-CAVEAT: If Eukaryotic genomes are simulated, downloaded genomes could potentially use >100 GB of file space 
+
+**CAVEAT**: If Eukaryotic genomes are simulated, downloaded genomes could potentially use >100 GB of file space 
 
 ```bash
  #optional

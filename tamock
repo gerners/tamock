@@ -710,12 +710,7 @@ sub runcmd
 	if ($install_deps) {
 		$verbose = 1;
 	} else {
-		#print command to screen if non-verbous, if verbose it's already printed by run()
-		if ($verbose) {
-			p_lock(0,1,"$outdir/tamock.log","Running [${cmd}]...\n");
-		} else {
-			p_lock(0,0,"$outdir/tamock.log","Running [${cmd}]...\n");
-		}
+		p_lock(0,0,"$outdir/tamock.log","Running [${cmd}]...\n");
 		p_lock(1,0,"$outdir/warnings.log","Running [${cmd}]...\n");
 	}	
 	

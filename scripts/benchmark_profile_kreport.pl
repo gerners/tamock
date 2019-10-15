@@ -98,7 +98,8 @@ my %domains;
 #flag to only read in bacterial species as only RefSeq for Bacteria are checked
 my $domflag = 0;
 
-my $total_reads_nonspecieslvl;
+my $total_reads_nonspecieslvl = 0;
+my $total_reads_domain_notselected = 0;
 
 my $KR = r_file("$kraken_report");
 while (my $line = <$KR>) {
@@ -118,6 +119,7 @@ while (my $line = <$KR>) {
 		next;
 	} elsif ($. == 2 && $name eq "root") {
 		assign_domain($taxid,$r_read,$r_ass,$rank,$.,$name);
+		$total_reads_nonspecieslvl += $r_ass if ($r_ass);
 		next;
 	} elsif ($rank eq "D" && exists $selected_domains{$name}) {
 		assign_domain($taxid,$r_read,$r_ass,$rank,$.,$name);
@@ -131,11 +133,15 @@ while (my $line = <$KR>) {
 	if ($domflag) {
 		if ($rank eq "D") {
 			$domflag = 0;
-			$total_reads_nonspecieslvl += $r_ass if ($r_ass);
+			$total_reads_domain_notselected += $r_ass if ($r_ass);
 		};
 		warn "INFO: Skipping all entries for '$name'\n" if $verbose > 1;
 	} else {
-		$total_reads_nonspecieslvl += $r_ass if ($r_ass);
+		if ($name eq "cellular organisms") {
+			$total_reads_nonspecieslvl += $r_ass if ($r_ass);
+		} else {
+			$total_reads_domain_notselected += $r_ass if ($r_ass);
+		}
 	}
 	next unless ($domflag == 1);
 	
@@ -435,7 +441,9 @@ foreach my $taxid (keys %refstrains) {
 #strains with reads assigned using the ratio relative strain counts
 
 #count all assigned, unassigned, reassigned reads and reassignments in both directions and selected genomes (within subroutines)
-my ($total_reads,$total_ua_reads, $total_st2sp_reads,$total_st2sp_reassignments,$total_sp2st_reads,$total_sp2st_reassignments,$genome_count);
+my $total_reads = 0;
+my $total_ua_reads = 0;
+my ($total_st2sp_reads,$total_st2sp_reassignments,$total_sp2st_reads,$total_sp2st_reassignments,$genome_count);
 
 #create hash for all taxids with a ref_genome assigned for later separation of FASTQ-files in extract_refreads_kreport.pl
 my %taxid_refgenome;
@@ -514,10 +522,12 @@ print $STATS "-number of reference genomes:\t$genome_count\n";
 print $STATS "-assigned to reference genome:\t$total_reads/$domains{1}{root_read} (",sprintf("%.2f",(($total_reads/$domains{1}{root_read})*100)),"\%)\n";
 print $STATS "-assigned above species level:\t$total_reads_nonspecieslvl/$domains{1}{root_read} (",
 	sprintf("%.2f",(($total_reads_nonspecieslvl/$domains{1}{root_read})*100)),"\%)\n" if ($total_reads_nonspecieslvl);
+print $STATS "-assigned to other domains:\t$total_reads_domain_notselected/$domains{1}{root_read} (",
+	sprintf("%.2f",(($total_reads_domain_notselected/$domains{1}{root_read})*100)),"\%)\n" if $total_reads_domain_notselected;
 print $STATS "-without reference genome:\t$total_ua_reads/$domains{1}{root_read} (",
 	sprintf("%.2f",(($total_ua_reads/$domains{1}{root_read})*100)),"\%)\n" if ($total_ua_reads);
-if ((defined $total_ua_reads && defined $total_reads_nonspecieslvl ) && ($total_reads + $total_ua_reads + $total_reads_nonspecieslvl) != $domains{1}{root_read}) {
-	my $total_lost =  $domains{1}{root_read} - $total_reads - $total_ua_reads - $total_reads_nonspecieslvl;
+if (($total_reads + $total_ua_reads + $total_reads_nonspecieslvl + $total_reads_domain_notselected) != $domains{1}{root_read}) {
+	my $total_lost =  $domains{1}{root_read} - $total_reads - $total_ua_reads - $total_reads_nonspecieslvl - $total_reads_domain_notselected;
 	print $STATS "-unaccounted sequences due to multimapping\t$total_lost/$domains{1}{root_read} (", 
 		sprintf("%.2f",(($total_lost/$domains{1}{root_read})*100)),"\%)\n";
 }
