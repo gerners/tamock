@@ -49,16 +49,11 @@ MacOS
 ```bash
  git clone https://github.com/gerners/tamock.git
  cd tamock
-<<<<<<< HEAD
- ./tamock --install-deps
- ./tamock --install-test
-=======
  
  #if ART (version 20160605) and Centrifuge (>= v1.0.4) are available on the system, this step is not needed
  tamock --install-deps
  
  tamock --install-test
->>>>>>> refs/heads/dev
 ```
 
 Centrifuge indexes have to be downloaded separately.
@@ -90,16 +85,7 @@ RefSeq reference genomes are all saved within one directory. If the directory /<
  mkdir /<tamock_install_dir>/refseq-genomes
 ```
 
-<<<<<<< HEAD
-To speed up analysis, all bacterial RefSeq genomes can be downloaded before mock community creation (>100 GB) instead of only downloading required genomes during a single run.
-
-```bash
- #optional
- tamock --download-refseq -R /path/to/refseq-genomes
-```
-=======
 If a local copy of all RefSeq genomes is present on the system, softlinks to all genome files (e.g. GCF_000013425.1_ASM1342v1_genomic.fna.gz) can be placed in /<tamock_install_dir>/refseq-genomes to use the local mirror of RefSeq.
->>>>>>> refs/heads/dev
 
 ## Quick start
 
