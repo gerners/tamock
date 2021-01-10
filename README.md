@@ -233,6 +233,10 @@ Pre-calculated reverse-read quality profile for custom error profile in ART. Rep
 Read length of simulated reads. Should be matched with a realistic error profile with according read lengths (-M). 
 If not provided, the longest read length from the first 250 reads of input sequences are used.
 
+* --rn-sim
+
+Number of reads for simulated sequence fraction. By default, the same number of sequences from the input sample will be kept, this option alters number of sequences!
+
 * --mean-fragment-length
 
 Mean size of fragment length for paired-end simulations by ART. Defaults to 200.
