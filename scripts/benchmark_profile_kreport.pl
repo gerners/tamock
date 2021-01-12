@@ -515,14 +515,16 @@ if ($rnsim) {
 	
 	#correct potential rounding error by adding/removing one count starting at strain with highest read number assigned
 	if ($rounding_diff) {
-		my @sorted_keys = sort { $str_w_rnr{$b} <=> $str_w_rnr{$a} } keys %str_w_rnr;
-		foreach my $h_cur (@sorted_keys) {
+		my @sorted_keys = sort { $str_w_rnr{$b}{root_ass}  <=> $str_w_rnr{$a}{root_ass} } keys %str_w_rnr;
+		foreach my $taxid (@sorted_keys) {
 			if ($rounding_diff > 0) {
-				$h_cur->{root_ass}--;
+				$str_w_rnr{$taxid}{href}->{root_ass}--;
 				$rounding_diff--;
+				$total_scaled_reads--;
 			} elsif ($rounding_diff < 0) {
-				$h_cur->{root_ass}++;
+				$str_w_rnr{$taxid}{href}->{root_ass}++;
 				$rounding_diff++;
+				$total_scaled_reads++;
 			} else {
 				last;
 			}
@@ -682,7 +684,10 @@ sub scale_assigned_reads
 
 			$hspecies->{root_ass} = sprintf("%.0f", ($scaling_factor * $hspecies->{root_ass}) );
 			$total_scaled_reads += $hspecies->{root_ass};
-			$str_w_rnr{$hspecies} = $hspecies->{root_ass};
+			$str_w_rnr{$sp_taxid} = {
+				root_ass => $hspecies->{root_ass},
+				href => $hspecies
+			};
 		}
 	}
 	
