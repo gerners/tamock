@@ -138,14 +138,25 @@ Tamock aims to replicate the original sample as close as possible therefore sequ
 
 If the separate sequence fraction (simulated, classified and subsequently replaced, unclassified and not replaced) should remain in the output of Tamock, use the -k/--keep option. All temporary read files will remain in the output directory under outdir/tmpreads like
 
-outdir/tmpreads/Sample_1.not_repl.fastq		=> unclassified sequences which will not be replaced
-outdir/tmpreads/Sample_1.repl_by_sim.fastq	=> sequences which could be classified and will be replaced by corresponding simulated sequences
-outdir/tmpreads/simulated_1.fq			=> sequences simulated by ART. Combined with XX.not_repl.fastq they form the final Tamock benchmark sample.
+* outdir/tmpreads/Sample_1.not_repl.fastq
+
+unclassified sequences which will not be replaced
+
+* outdir/tmpreads/Sample_1.repl_by_sim.fastq
+
+sequences which could be classified and will be replaced by corresponding simulated sequences
+
+* outdir/tmpreads/simulated_1.fq
+
+sequences simulated by ART. Combined with XX.not_repl.fastq they form the final Tamock benchmark sample.
+
 
 ```bash
  tamock -1 <paired_1.fastq> -2 <paired_2.fastq> -o <output directory>  --keep \
  -R <reference genome directory> -x <centrifuge-index/p+h+v>
 ```
+
+
 
 ### Options
 
