@@ -140,15 +140,15 @@ If the separate sequence fraction (simulated, classified and subsequently replac
 
 * outdir/tmpreads/Sample_1.not_repl.fastq
 
-unclassified sequences which will not be replaced
+Unclassified sequences which will not be replaced
 
 * outdir/tmpreads/Sample_1.repl_by_sim.fastq
 
-sequences which could be classified and will be replaced by corresponding simulated sequences
+Sequences which could be classified and will be replaced by corresponding simulated sequences
 
 * outdir/tmpreads/simulated_1.fq
 
-sequences simulated by ART. Combined with XX.not_repl.fastq they form the final Tamock benchmark sample.
+Sequences simulated by ART. Combined with XX.not_repl.fastq they form the final Tamock benchmark sample.
 
 
 ```bash
