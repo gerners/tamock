@@ -32,7 +32,7 @@ my $t0 = [gettimeofday];
 
 ##########################################################################
 #option handling
-my ($kraken_report,$assembly_summary,$refseq_folder,$no_strain_ra,$domains);
+my ($kraken_report,$assembly_summary,$rnsim,$refseq_folder,$no_strain_ra,$domains);
 
 #set defaults
 my $outdir = getcwd;
@@ -41,6 +41,7 @@ my $verbose = 0;
 GetOptions(	"kraken-report=s" => \$kraken_report,
 			"domains=s" => \$domains,
 			"assembly-summary=s" => \$assembly_summary,
+			"rn-sim:i" => \$rnsim,
 			"refgenomes|R=s" => \$refseq_folder,
 			"outdir=s" => \$outdir,
 			"no-reassign" => \$no_strain_ra,
@@ -95,7 +96,7 @@ my ($prev_taxid,$sp_taxid,$prev_href);
 my %species;
 my %domains;
 
-#flag to only read in bacterial species as only RefSeq for Bacteria are checked
+#flag to read in current domain in kreport if selected in options
 my $domflag = 0;
 
 my $total_reads_nonspecieslvl = 0;
@@ -453,10 +454,12 @@ foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
 	reassign_strain_reads($species{$taxid}{strains});
 }
 
-#reassign reads from strains without associated genomes to parent species/strain
+#reassign reads from species to strains with associated genomes
 foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
 	reassign_species_reads($species{$taxid});
 }
+
+
 ##########################################################################
 
 
@@ -486,11 +489,55 @@ my $UA = w_file("$outdir/norefgenome.tsv");
 
 print $IF "Abundance\tNCBI TaxID\tName\tReference filename\tReference genome length\n";
 print $UA "NCBI TaxID\tReads assigned\tName\n";
-	
+
+
 foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
 	check_refgenomes($species{$taxid});
 }
 close $UA;
+
+##########################################################################
+
+#durign check_refgenomes, all total_counts are created as well as full_profile.tsv printed for ART to work with
+#scale reads appropriately if option is given
+my %str_w_rnr;
+my $total_scaled_reads;
+my $scaling_factor;
+if ($rnsim) {
+	$scaling_factor = $rnsim / $total_reads;
+	
+	foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
+		scale_assigned_reads($species{$taxid},$scaling_factor);
+	}
+	
+	#check if there has been a rounding error during scaling since numbers are rounded to nearest integer
+	my $rounding_diff = $total_scaled_reads - $rnsim; 
+	
+	#correct potential rounding error by adding/removing one count starting at strain with highest read number assigned
+	if ($rounding_diff) {
+		my @sorted_keys = sort { $str_w_rnr{$b}{root_ass}  <=> $str_w_rnr{$a}{root_ass} } keys %str_w_rnr;
+		foreach my $taxid (@sorted_keys) {
+			if ($rounding_diff > 0) {
+				$str_w_rnr{$taxid}{href}->{root_ass}--;
+				$rounding_diff--;
+				$total_scaled_reads--;
+			} elsif ($rounding_diff < 0) {
+				$str_w_rnr{$taxid}{href}->{root_ass}++;
+				$rounding_diff++;
+				$total_scaled_reads++;
+			} else {
+				last;
+			}
+		}
+	}
+}
+
+##########################################################################
+#write full_profile.tsv for ART input
+foreach my $taxid (sort {$a <=> $b} @toplvl_species) {
+	w_fullprofile4art($species{$taxid});
+}
+
 #close $AF;
 #close $GI;
 close $IF;
@@ -531,6 +578,9 @@ if (($total_reads + $total_ua_reads + $total_reads_nonspecieslvl + $total_reads_
 	print $STATS "-unaccounted sequences due to multimapping\t$total_lost/$domains{1}{root_read} (", 
 		sprintf("%.2f",(($total_lost/$domains{1}{root_read})*100)),"\%)\n";
 }
+if ($rnsim && $total_scaled_reads) {
+	print $STATS "-scaled simulated sequence fraction:\t$total_scaled_reads/$total_reads (by ",sprintf("%.2f",$scaling_factor),"x)\n";
+}
 close $STATS;
 
 print "$0 took ",runtime(tv_interval($t0)), " to run\n";
@@ -561,21 +611,14 @@ sub check_refgenomes {
 			$total_reads += $hspecies->{root_ass};
 			get_refgenome($sp_taxid);
 			
-			#write to ART input files
-			my $base = basename("$genomes{$sp_taxid}{ftp}");
 			$genome_count++;
-			
-			#print $AF "${base}_genomic.fna\t$hspecies->{root_ass}\n";
-			#print $GI "${base}_genomic.fna\t$refgenomes{$sp_taxid}{genomelength}\t1\n";
-			print $IF "$hspecies->{root_ass}\t$sp_taxid\t$genomes{$sp_taxid}{organism}\t${base}_genomic.fna.gz\t$refgenomes{$sp_taxid}{genomelength}\n";
 		}
 	}
 	
-	#reassign reads for subsequent strains if they have strains themself
+	#check strains
 	if ($hspecies->{strains}) {
 		for my $st_taxid (keys %{$hspecies->{strains}}) {
 			check_refgenomes($hspecies->{strains}{$st_taxid});
-			
 		}
 	}
 }
@@ -623,6 +666,65 @@ sub reassign_strain_reads
 					$taxid_refgenome{wref}{$st_taxid} = undef;
 				}
 			}
+		}
+	}
+}
+##########################################################################
+sub scale_assigned_reads
+{
+	my $hspecies = shift;
+	my $scaling_factor = shift;
+	my $sp_taxid = $hspecies->{taxid};
+	
+	#check if reads are assigned to current level
+	if ($hspecies->{root_ass}) {
+		
+		#check if reference genome is available or if reads were assigned to reference strain
+		if ($genomes{$sp_taxid}) {
+
+			$hspecies->{root_ass} = sprintf("%.0f", ($scaling_factor * $hspecies->{root_ass}) );
+			$total_scaled_reads += $hspecies->{root_ass};
+			$str_w_rnr{$sp_taxid} = {
+				root_ass => $hspecies->{root_ass},
+				href => $hspecies
+			};
+		}
+	}
+	
+	#check strains
+	if ($hspecies->{strains}) {
+		for my $st_taxid (keys %{$hspecies->{strains}}) {
+			scale_assigned_reads($hspecies->{strains}{$st_taxid},$scaling_factor);
+			
+		}
+	}
+}
+##########################################################################
+sub w_fullprofile4art
+{
+	my $hspecies = shift;
+	my $sp_taxid = $hspecies->{taxid};
+	
+	#check if reads are assigned to current level
+	if ($hspecies->{root_ass}) {
+		
+		#check if reference genome is available or if reads were assigned to reference strain
+		if ($genomes{$sp_taxid}) {
+
+			#write to ART input files
+			my $base = basename("$genomes{$sp_taxid}{ftp}");
+			
+			#print $AF "${base}_genomic.fna\t$hspecies->{root_ass}\n";
+			#print $GI "${base}_genomic.fna\t$refgenomes{$sp_taxid}{genomelength}\t1\n";
+			print $IF "$hspecies->{root_ass}\t$sp_taxid\t$genomes{$sp_taxid}{organism}\t${base}_genomic.fna.gz\t$refgenomes{$sp_taxid}{genomelength}\n";
+		}
+	}
+	
+	#check strains
+	if ($hspecies->{strains}) {
+		for my $st_taxid (keys %{$hspecies->{strains}}) {
+			w_fullprofile4art($hspecies->{strains}{$st_taxid});
+			
 		}
 	}
 }
@@ -919,7 +1021,6 @@ sub runtime
 ##########################################################################
 sub print_help
 {
-	my $err = shift || 0;
 	print STDERR <<EOD;
 
 Usage: $0 [Parameters]
@@ -939,7 +1040,9 @@ Usage: $0 [Parameters]
 	
 	--no-reassign			No reassignment of read counts from strains without a reference to other 
 	               			classified strains/reference genomes of same species (off)
-	
+	               			
+	--rn-sim  	        	Number of reads for simulated sequence fraction. By default, the same number of 	
+	                        sequences from the input sample will be kept, this option alters number of sequences!
 	
 	-v/--verbose			Print detailed information for each step, can be used multiple times
 	
@@ -947,5 +1050,5 @@ Usage: $0 [Parameters]
 	-h/--help			Prints this helpmessage
 	
 EOD
-	exit $err;
+	exit;
 }

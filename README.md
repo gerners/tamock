@@ -5,7 +5,7 @@ Tamock simulates habitat-specific benchmark data for metagenomic samples.
 
 Simulated metagenomic reads are widely used to benchmark software and workflows for metagenome interpretation. 
 Scope and power of metagenomic benchmarks depend on the selection of their underlying communities. As a result, 
-conclusions of benchmark studies are limited for distant communities towards the benchmark data used. Ideally,  
+conclusions of benchmark studies are limited for distant communities towards the benchmark data used. Ideally, 
 simulations are therefore based on genomes, which resemble metagenomic communities realistically. 
 
 Tamock facilitates the simulation of metagenomic reads according to a microbial community, derived from real 
@@ -78,7 +78,7 @@ this index is used by default if no other index is provided to tamock.
 
 RefSeq reference genomes are all saved within one directory. If the directory /<tamock_install_dir>/refseq-genomes is created, this directory is used by default unless another directory is provided via the command line.
 
-**CAVEAT**: If Eukaryotic genomes are simulated, downloaded genomes could potentially use >100 GB of file space 
+**CAVEAT**: If Eukaryotic genomes are simulated, downloaded genomes could potentially use >100 GB of file space
 
 ```bash
  #optional
@@ -113,12 +113,50 @@ Single end simulation
 Classification is the most expensive task. Multiple threads speed up classification while RAM usage depends on the index used. 
 This step can also be skipped by providing pre-computed centrifuge classification results.
 
-CAVEAT: When using external centrifuge results, ensure that centrifuge version 1.0.4 or higher is used and that the same index used is provided to tamock.
+CAVEAT: When using external centrifuge results, ensure that centrifuge version 1.0.4 or higher is used and that the same index is provided to tamock.
 
 ```bash
  tamock -1 <paired_1.fastq> -2 <paired_2.fastq> --centrifuge-kreport -o <output directory> \
  -R <reference genome directory> -x <centrifuge-index/p+h+v>
 ```
+
+Simulate additional domains (only bacterial domain by default). All classified species with a corresponding reference genome will be simulated.
+Provide selected domains as a comma-separated selection via -d option, e.g. for (E)ukaryota, (B)acteria, (V)iruses, and (A)rchaea
+
+```bash
+ tamock -1 <paired_1.fastq> -2 <paired_2.fastq> -o <output directory>  -d E,B,V,A \
+ -R <reference genome directory> -x <centrifuge-index/p+h+v>
+```
+
+Tamock simulates all sequences which could be classified and do have a reference genome available. All simulated sequences will replace the corresponding classified sequences in the original sample, while the unknown and unclassified sequence fraction will be maintained. 
+Tamock aims to replicate the original sample as close as possible therefore sequence depth for a benchmark sample will be the same as the original sample. However to enable additional experiments, read depth for the simulated sequence fraction can be altered (via --rn-sim) which will scale all classified sequences with a reference genome to the specified sequence depth which will be combined with the unknown/unclassified sequence fraction for the final benchmark.
+
+```bash
+ tamock -1 <paired_1.fastq> -2 <paired_2.fastq> -o <output directory> --rn-sim <sequence depth for simulated sequences> \
+ -R <reference genome directory> -x <centrifuge-index/p+h+v>
+```
+
+If the separate sequence fraction (simulated, classified and subsequently replaced, unclassified and not replaced) should remain in the output of Tamock, use the -k/--keep option. All temporary read files will remain in the output directory under outdir/tmpreads like
+
+* outdir/tmpreads/Sample_1.not_repl.fastq
+
+Unclassified sequences which will not be replaced
+
+* outdir/tmpreads/Sample_1.repl_by_sim.fastq
+
+Sequences which could be classified and will be replaced by corresponding simulated sequences
+
+* outdir/tmpreads/simulated_1.fq
+
+Sequences simulated by ART. Combined with XX.not_repl.fastq they form the final Tamock benchmark sample.
+
+
+```bash
+ tamock -1 <paired_1.fastq> -2 <paired_2.fastq> -o <output directory>  --keep \
+ -R <reference genome directory> -x <centrifuge-index/p+h+v>
+```
+
+
 
 ### Options
 
@@ -146,7 +184,7 @@ Directory to store all RefSeq reference genomes. Defaults to <install_dir/refseq
 
 * -x/--index
 
-Centrifuge index (*.cf files). Only basename needed, e.g. /path/to/index.X.cf should be provided as '-x /path/to/index'.  
+Centrifuge index (*.cf files). Only basename needed, e.g. /path/to/index.X.cf should be provided as '-x /path/to/index'.
 Defaults to <installdir/centrifuge-index/p+h+v> if present and no other option given
 
 Index files can be downloaded from the centrifuge homepage at http://www.ccb.jhu.edu/software/centrifuge/
@@ -168,7 +206,7 @@ simulated sequences (simulated*.fq)). Temporary files are stored in <output_dir/
 
 * -a/--assembly-summary
 
-NCBI assembly summary table from ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt.  
+NCBI assembly summary table from ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt.
 Defaults to /installdir/assembly_summary.txt (downloaded during installation).
 
 * --ncbi-sum-update
@@ -232,6 +270,10 @@ Pre-calculated reverse-read quality profile for custom error profile in ART. Rep
 
 Read length of simulated reads. Should be matched with a realistic error profile with according read lengths (-M). 
 If not provided, the longest read length from the first 250 reads of input sequences are used.
+
+* --rn-sim
+
+Number of reads for simulated sequence fraction. By default, the same number of sequences from the input sample will be kept, this option alters number of sequences!
 
 * --mean-fragment-length
 

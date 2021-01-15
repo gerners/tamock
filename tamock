@@ -18,7 +18,7 @@ use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
 use Time::HiRes qw(gettimeofday tv_interval);
 
 #version number
-my $tamock_version = "1.2.0";
+my $tamock_version = "1.3.0";
 
 #absolute path of install dir
 my $wd;
@@ -39,7 +39,7 @@ my $ncbi_as_uri = "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary_re
 
 #config		refseq dir
 my ($readsf,$readsr,$readsu,$cent_krep,$cent_tab) = (undef,undef,undef,undef,undef);
-my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,$qprof1,$qprof2,
+my ($index,$assembly_summary,$update_as,$refseq_folder,$no_strain_ra,$modegz,$qprof1,$qprof2,$rnsim,$rntot,
 	$length,$verbose,$outdir,$install_deps,$install_test,$install_test_debug,$domains,$keep);
 
 #defaults
@@ -71,6 +71,8 @@ GetOptions(	"outdir=s" => \$outdir,
 			"gzip" => \$modegz,
 			"qprof1=s" => \$qprof1,
 			"qprof2=s" => \$qprof2,
+			"rn-sim:i" => \$rnsim,
+			"rn-total=i" => \$rntot,
 			
 			"install-deps" => \$install_deps,
 			"install-test" => \$install_test,
@@ -88,20 +90,12 @@ if ($install_test) {
 	test_installation();
 }
 
+if ($update_as) {
+	$outdir = $wd;
+}
+
 ##########################################################################
 #sanity checks
-
-########################
-### outdir ###
-
-if (defined $outdir && -d $outdir) {
-	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
-	#give 10 secs to kill command if wrong dir is provided
-	sleep 10;
-} else {
-	die "No output directory given\n" unless $outdir;
-	mkd("$outdir");
-}
 
 ########################
 ### assembly summary table ###
@@ -122,6 +116,18 @@ if (! defined $assembly_summary) {
 	}
 } else {
 	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
+}
+
+########################
+### outdir ###
+
+if (defined $outdir && -d $outdir) {
+	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
+	#give 10 secs to kill command if wrong dir is provided
+	sleep 10;
+} else {
+	die "No output directory given\n" unless $outdir;
+	mkd("$outdir");
 }
 
 ########################
@@ -195,6 +201,10 @@ my $semode;
 	#flag SE mode, default expecting PE mode
 	$semode++ unless (-r $readsf && -r $readsr);
 }
+#change all reads to absolute paths to make ART custom profile work
+$readsf = File::Spec->rel2abs($readsf);
+$readsr = File::Spec->rel2abs($readsr) if $readsr;
+$readsu = File::Spec->rel2abs($readsu) if $readsu;
 
 ########################
 ### centrifuge ###
@@ -265,7 +275,7 @@ if (! defined $length) {
 	}
 	close $IN;
 }
-#if a custom error profile is provided, mode is custom
+#if a custom error profile is not provided, mode is custom
 if (defined $qprof1) {
 	$illumina_model = "custom";
 }
@@ -374,7 +384,6 @@ if ("$illumina_model" eq "custom") {
 		runcmd("$seqprof_cmd",$verbose);
 	}
 }
-
 ########################
 #create benchmark profile
 
@@ -392,6 +401,7 @@ $profile_cmd .= " --no-reassign" if $no_strain_ra;
 if ($domains) {
 	$profile_cmd .= " -d $domains";
 }
+$profile_cmd .= " --rn-sim $rnsim" if $rnsim;
 
 print("INFO: Downloading required genomes from RefSeq might take multiple hours...\n");
 runcmd("$profile_cmd",$verbose);
@@ -926,6 +936,8 @@ Usage: $0 [Parameters]
 	                        		For available pre-calculated profiles see 'art_illumina -h'
 	-l/--length	    		Read length of simulated reads 
 						(defaults to longest read length in first 250 reads of input file)
+	--rn-sim  	        	Number of reads for simulated sequence fraction. By default, the same number of 	
+	                        		sequences from the input sample will be kept, this option alters number of sequences!
 	--mean-fragment-length		Mean size of fragments for paired-end simulations (200)
 	--sd-fragment-length		Standard deviation of fragment size for paired-end simulations (10)
 	--qprof1  	        	Precalculated forward-read quality profile for custom error profile in ART
