@@ -51,9 +51,9 @@ MacOS
  cd tamock
  
  #if ART (version 20160605) and Centrifuge (>= v1.0.4) are available on the system, this step is not needed
- tamock --install-deps
+ ./tamock --install-deps
  
- tamock --install-test
+ ./tamock --install-test
 ```
 
 Centrifuge indexes have to be downloaded separately.

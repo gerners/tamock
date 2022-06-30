@@ -586,7 +586,7 @@ sub install_dependencies
 	print "Downloading Centrifuge...\n";
 	
 	#caveat, fetch fails with no error if https is used, just retype to http
-	my $cf_arch = fetchfile('https://github.com/DaehwanKimLab/centrifuge/archive/6cc874e890249f6d8b479bd41b41e131f12c6796.zip',"$wd");
+	my $cf_arch = fetchfile('http://github.com/DaehwanKimLab/centrifuge/archive/6cc874e890249f6d8b479bd41b41e131f12c6796.zip',"$wd");
 	runcmd("$unzip_path $cf_arch",0);
 	
 	print "Building Centrifuge...\n";
@@ -703,7 +703,7 @@ sub test_installation
 			"Installation not successful, please report ${wd}/testdata/testout/warnings.log at https://github.com/gerners/tamock/issues\n";
 		}
 	} elsif ("$Config{osname}" eq "darwin") {
-		if ("$rs1_md5" eq "0c0f6da32698998aa54713b203c8f430" && "$rs2_md5" eq "d3c64d3ef2a8c4ab8a1e9a0824ddcb49") {
+		if ("$rs1_md5" eq "b5e7dbedcd0e5414ac02168b766c82a5" && "$rs2_md5" eq "e5d5171bc6e9ab01f2918a514007254a") {
 			print "#################################################\n","Test successfull, everything is installed correctly\n";
 		} else {
 			print "#################################################\n","Test failed!\n",
