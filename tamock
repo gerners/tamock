@@ -118,6 +118,8 @@ if (! defined $assembly_summary) {
 	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
 }
 
+
+
 ########################
 ### outdir ###
 
@@ -603,7 +605,21 @@ sub install_dependencies
 	#ART
 	print "Downloading ART...\n";
 	#caveat, fetch fails with no error if https is used, just retype to http
-	my $art_arch = fetchfile('http://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier20160605linuxtgz.tgz',"$wd");
+	my $art_arch;
+	if ("$Config{osname}" eq "linux") {
+		$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier2016.06.05linux.tgz',"$wd")
+		
+	} elsif ("$Config{osname}" eq "darwin") {
+		$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier2016.06.05macos.tgz',"$wd")
+		
+	} else {
+		warn "Unknown OS '$Config{osname}', test only implemented for 'linux' and 'darwin' (MacOS)\nInstallation will assume Linux\n";
+		$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier2016.06.05linux.tgz',"$wd");
+		
+	}
+	
+	
+	#my $art_arch = fetchfile('http://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier20160605linuxtgz.tgz',"$wd");
 	
 	my $art_tar = Archive::Tar->new;
 	$art_tar->read("$art_arch");
