@@ -603,7 +603,35 @@ sub install_dependencies
 	#ART
 	print "Downloading ART...\n";
 	#caveat, fetch fails with no error if https is used, just retype to http
-	my $art_arch = fetchfile('http://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier20160605linuxtgz.tgz',"$wd");
+	my $art_arch;
+	if ("$Config{osname}" eq "linux") {
+		if ("$Config{use64bitint}" eq "define") {
+			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux64.tgz',"$wd");
+		} else {
+			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux32.tgz',"$wd");
+		}
+		
+	} elsif ("$Config{osname}" eq "darwin") {
+		if ("$Config{use64bitint}" eq "define") {
+			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05macos64.tgz',"$wd");
+		} else {
+			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05macos32.tgz',"$wd");
+		}
+		
+	} else {
+		if ("$Config{use64bitint}" eq "define") {
+			
+			warn "Unknown OS '$Config{osname}', test only implemented for 'linux' and 'darwin' (MacOS)\nInstallation will assume Linux 64bit\n";
+			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux64.tgz',"$wd");
+		} else {
+			warn "Unknown OS '$Config{osname}', test only implemented for 'linux' and 'darwin' (MacOS)\nInstallation will assume Linux 32bit\n";
+			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux32.tgz',"$wd");
+		}
+		
+	}
+	
+	
+	#my $art_arch = fetchfile('http://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier20160605linuxtgz.tgz',"$wd");
 	
 	my $art_tar = Archive::Tar->new;
 	$art_tar->read("$art_arch");
