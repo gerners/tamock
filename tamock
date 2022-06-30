@@ -98,6 +98,18 @@ if ($update_as) {
 #sanity checks
 
 ########################
+### outdir ###
+
+if (defined $outdir && -d $outdir) {
+	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
+	#give 10 secs to kill command if wrong dir is provided
+	sleep 10;
+} else {
+	die "No output directory given\n" unless $outdir;
+	mkd("$outdir");
+}
+
+########################
 ### assembly summary table ###
 
 if (! defined $assembly_summary) {
@@ -116,20 +128,6 @@ if (! defined $assembly_summary) {
 	}
 } else {
 	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
-}
-
-
-
-########################
-### outdir ###
-
-if (defined $outdir && -d $outdir) {
-	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
-	#give 10 secs to kill command if wrong dir is provided
-	sleep 10;
-} else {
-	die "No output directory given\n" unless $outdir;
-	mkd("$outdir");
 }
 
 ########################
