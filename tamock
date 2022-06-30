@@ -98,6 +98,18 @@ if ($update_as) {
 #sanity checks
 
 ########################
+### outdir ###
+
+if (defined $outdir && -d $outdir) {
+	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
+	#give 10 secs to kill command if wrong dir is provided
+	sleep 10;
+} else {
+	die "No output directory given\n" unless $outdir;
+	mkd("$outdir");
+}
+
+########################
 ### assembly summary table ###
 
 if (! defined $assembly_summary) {
@@ -118,17 +130,7 @@ if (! defined $assembly_summary) {
 	die "Can't read provided file '$assembly_summary'\n" unless (-r $assembly_summary);
 }
 
-########################
-### outdir ###
 
-if (defined $outdir && -d $outdir) {
-	print "WARNING: Directory already exists, results might be overwritten\nContinuing in 10 sec...\n";
-	#give 10 secs to kill command if wrong dir is provided
-	sleep 10;
-} else {
-	die "No output directory given\n" unless $outdir;
-	mkd("$outdir");
-}
 
 ########################
 ### selected domains ###
@@ -605,28 +607,14 @@ sub install_dependencies
 	#caveat, fetch fails with no error if https is used, just retype to http
 	my $art_arch;
 	if ("$Config{osname}" eq "linux") {
-		if ("$Config{use64bitint}" eq "define") {
-			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux64.tgz',"$wd");
-		} else {
-			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux32.tgz',"$wd");
-		}
+		$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier2016.06.05linux.tgz',"$wd")
 		
 	} elsif ("$Config{osname}" eq "darwin") {
-		if ("$Config{use64bitint}" eq "define") {
-			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05macos64.tgz',"$wd");
-		} else {
-			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05macos32.tgz',"$wd");
-		}
+		$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier2016.06.05macos.tgz',"$wd")
 		
 	} else {
-		if ("$Config{use64bitint}" eq "define") {
-			
-			warn "Unknown OS '$Config{osname}', test only implemented for 'linux' and 'darwin' (MacOS)\nInstallation will assume Linux 64bit\n";
-			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux64.tgz',"$wd");
-		} else {
-			warn "Unknown OS '$Config{osname}', test only implemented for 'linux' and 'darwin' (MacOS)\nInstallation will assume Linux 32bit\n";
-			$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artbinmountrainier2016.06.05linux32.tgz',"$wd");
-		}
+		warn "Unknown OS '$Config{osname}', test only implemented for 'linux' and 'darwin' (MacOS)\nInstallation will assume Linux\n";
+		$art_arch = fetchfile('https://www.niehs.nih.gov/research/resources/assets/docs/artsrcmountrainier2016.06.05linux.tgz',"$wd");
 		
 	}
 	
